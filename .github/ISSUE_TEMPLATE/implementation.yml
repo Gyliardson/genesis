@@ -1,0 +1,24 @@
+name: Implementação
+description: Entrega funcional com critérios objetivos de aceite
+title: "[Build] "
+labels: ["type:build"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema e escopo
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Critérios de aceite
+      description: Casos reproduzíveis, invariantes e testes esperados
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependências e riscos
+    validations:
+      required: false

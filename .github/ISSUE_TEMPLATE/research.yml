@@ -1,0 +1,33 @@
+name: Pesquisa / hipótese
+description: Investigar uma decisão técnica ou hipótese científica antes de implementá-la
+title: "[Research] "
+labels: ["type:research"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Pergunta
+      description: Qual incerteza será reduzida?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativas e baselines
+      description: Abordagens que devem ser comparadas
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidências necessárias
+      description: Fontes, experimentos, métricas e critérios de decisão
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Entregável verificável
+      description: Onde o resultado será documentado e como será reproduzido
+    validations:
+      required: true
