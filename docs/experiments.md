@@ -124,7 +124,7 @@ Separar **train / validation / final test** por seeds e, para traces externos, p
 - **Action:** START(job_id) de job elegível ou WAIT estritamente legal, com máscara e comportamento para ação inválida/fallback definidos antes da execução. Nenhuma preempção, mudança de quota ou shell.
 - **Policy:** reset(policy_seed, public_config), decide(observation) -> Action, serialização opcional com versão, estado interno privado e determinismo configurado; acesso somente à interface, não ao estado real do simulador.
 
-**DECISION REQUIRED / SYNTHESIS:** RESEARCH-02 valida time/event/WAIТ, censoring e simulador; RESEARCH-03 pesquisa entrada de fila variável, algoritmo e orçamento; somente então formalizar contratos/função de fitness no ADR. EXP-001 não fornece evidência de generalização, validação física ou novidade científica antes de dados reais.
+**DECISION REQUIRED / SYNTHESIS:** RESEARCH-02 valida time/event/WAIT, censoring e simulador; RESEARCH-03 pesquisa entrada de fila variável, algoritmo e orçamento; somente então formalizar contratos/função de fitness no ADR. EXP-001 não fornece evidência de generalização, validação física ou novidade científica antes de dados reais.
 
 ## EXP-002 — Generalização (posterior)
 
