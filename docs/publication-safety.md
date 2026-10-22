@@ -4,7 +4,7 @@
 
 ## Gate antes de mudar visibilidade
 
-1. Inventariar todas as refs, commits alcançáveis e objetos sensíveis; executar scanner confiável no **histórico completo** (por exemplo, `gitleaks git --log-opts="--all --full-history -m" .` em clone autorizado, validando sintaxe/versão da ferramenta), revisar achados redigidos e rodar revisão humana. Cobrir também Issues, PRs, comentários, reviews, anexos, Checks/annotations, Actions/logs e artefatos, inclusive referências fora do Git. Se alguma superfície não for auditável, classificar **UNVERIFIED**, não PASS.
+1. Inventariar todas as refs, commits alcançáveis e objetos sensíveis; executar scanner previamente autenticado e validado pelo wrapper sobre todos os patches alcançáveis (inclusive merges com `-m`) em clone autorizado, sem confundir cobertura de patches com histórico/superfícies completos, revisar achados redigidos e rodar revisão humana. Cobrir também Issues, PRs, comentários, reviews, anexos, Checks/annotations, Actions/logs e artefatos, inclusive referências fora do Git. Se alguma superfície não for auditável, classificar **UNVERIFIED**, não PASS.
 2. Corrigir **antes** da publicação qualquer exposição sensível. Para segredo válido: bloquear divulgação, identificar titulares e rotacionar/revogar pelo processo autorizado; avaliar necessidade de tratamento de histórico com autorização separada. Não reproduzir o segredo em Issue, PR ou log.
 3. Decidir expressamente licença, copyright/atribuições, direitos sobre contribuições e sobre dados/artefatos. **Apache-2.0 é apenas proposta para o código.** Até decisão, manter `LicenseRef-Proprietary`, ausência de `LICENSE` e terminologia que não prometa open source.
 4. Validar CI de forks: eventos `pull_request` não privilegiados, `permissions: contents: read`, actions pinadas por SHA, checkout sem persistência de credenciais, timeout/concurrency e custos proporcionais. Diagnosticar separadamente a falha preexistente da [Issue #4](https://github.com/Gyliardson/genesis/issues/4). Não usar `pull_request_target` para executar código de PR externo; não entregar segredos ou runners privilegiados a forks.
@@ -124,7 +124,7 @@ Para executar testes de regressão **sem segredos reais** em checkout do candida
 ~~~bash
 bash -n scripts/audit-public-readiness.sh
 python -m unittest discover -s tests -p 'test_public_audit.py' -v
-command -v gitleaks && gitleaks version   # presença e versão apenas, NÃO é scan
+command -v gitleaks   # apenas localizar caminho; NUNCA executar version/help antes de autenticar hash
 ~~~
 
 O pacote de testes usa explicitamente **test-double Gitleaks**, validando a passagem dos parâmetros, diferenças de merge, erro seguro, não divulgação no terminal e permissões. **Não é uma varredura Gitleaks real**. Antes da auditoria confidencial, verificar versão exata, distribuição oficial/hash ou assinatura confiável, regras/allowlists e testar o **binário verdadeiro** contra fixtures sintéticas positivas e negativas. Se o scanner real não encontrar a fixture merge-only, `PUB-01=FAIL`. Versão/hash são registrados pelo wrapper, mas por si não demonstram autenticidade.
