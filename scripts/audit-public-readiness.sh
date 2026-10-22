@@ -101,6 +101,10 @@ git -C "$mirror" for-each-ref --format='%(objectname)%09%(refname)' > "$out/loca
 # Comparar refs anunciadas ANTES/DEPOIS e objeto local; refs não reconhecidas
 # também são lacuna, nunca descartadas silenciosamente.
 coverage_gap=0
+if [ ! -s "$out/remote-before.private.tsv" ]; then
+  echo 'EMPTY_REMOTE_ADVERTISEMENT: incomplete reference inventory' >> "$out/coverage-gaps.private.txt"
+  coverage_gap=1
+fi
 if ! cmp -s "$out/remote-before.private.tsv" "$out/remote-after.private.tsv"; then
   echo 'Remote refs changed during scan: unstable/ephemeral snapshot' >> "$out/coverage-gaps.private.txt"
   coverage_gap=1
@@ -139,11 +143,11 @@ printf 'GIT_LFS=UNVERIFIED: pointers/history and remote LFS objects require sepa
 # Flags testadas pelo preflight; scanner lida com -m (merge diff por parent).
 # Saída do scanner e relatório 100% redigidos, NUNCA stdout/stderr do terminal.
 set +e
-gitleaks git --redact=100 --ignore-gitleaks-allow \
+( cd -- "$out" && gitleaks git --redact=100 --ignore-gitleaks-allow \
   --gitleaks-ignore-path "$out/empty-ignore.private.txt" \
   --log-opts='--all --full-history -m' \
   --report-format=json --report-path "$out/gitleaks.redacted.private.json" \
-  "$mirror" > "$out/gitleaks.stdout.private.txt" 2> "$out/gitleaks.stderr.private.txt"
+  "$mirror" ) > "$out/gitleaks.stdout.private.txt" 2> "$out/gitleaks.stderr.private.txt"
 scan_status=$?
 set -e
 printf '%s\n' "$scan_status" > "$out/gitleaks-exit-code.private.txt"
