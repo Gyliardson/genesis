@@ -1,4 +1,5 @@
 """Offline deterministic security regressions for the public-readiness audit wrapper."""
+import hashlib
 import os
 from pathlib import Path
 import stat
@@ -56,14 +57,26 @@ if 'SYNTHETIC_MERGE_ONLY_MARKER_5a938bad4b72' in proc.stdout: sys.exit(1)
 sys.exit(0)
 ''')
         g.chmod(0o700)
+        self.manifest = self.root / 'trusted-scanner.manifest'
+        digest = hashlib.sha256(g.read_bytes()).hexdigest()
+        # TEST ONLY: declarations are synthetic; not authenticated upstream claims.
+        self.manifest.write_text(
+            f'SHA256={digest}\n'
+            'SOURCE=https://github.com/gitleaks/gitleaks/releases/tag/TEST-FIXTURE\n'
+            'DIGEST_SOURCE=https://github.com/gitleaks/gitleaks/releases/tag/TEST-FIXTURE\n'
+            'VERIFIED_BY=synthetic-fixture\n'
+        )
+        self.manifest.chmod(0o600)
         self.env = dict(os.environ, PATH=str(self.bin) + os.pathsep + os.environ['PATH'])
 
-    def scan(self, source=None, out=None):
-        return run('bash', str(SCRIPT), str(source or self.source), str(out or self.root/'out'), check=False, env=self.env)
+    def scan(self, source=None, out=None, manifest=None):
+        return run('bash', str(SCRIPT), str(source or self.source),
+                   str(out or self.root/'out'), str(manifest or self.manifest),
+                   check=False, env=self.env)
 
     def test_no_finding_and_private_permissions(self):
         result = self.scan()
-        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.returncode, 66, result.stderr)
         self.assertNotIn('PRIVATE_SCANNER_OUTPUT_DO_NOT_STREAM', result.stdout + result.stderr)
         self.assertEqual(stat.S_IMODE((self.root/'out').stat().st_mode), 0o700)
         self.assertEqual(stat.S_IMODE((self.root/'out/gitleaks.stdout.private.txt').stat().st_mode), 0o600)
@@ -71,6 +84,13 @@ sys.exit(0)
         self.assertEqual((self.root/'out/gitleaks-exit-code.private.txt').read_text().strip(), '0')
         self.assertIn('GIT_LFS=UNVERIFIED', (self.root/'out/coverage-gaps.private.txt').read_text())
         self.assertIn('GITLEAKS_CONFIG=unset', (self.root/'out/provenance.private.txt').read_text())
+        status = (self.root/'out/status.private.env').read_text()
+        for field in ('SCAN_STATUS=PASS', 'COVERAGE_STATUS=UNVERIFIED',
+                      'HUMAN_REVIEW_STATUS=NOT_RUN', 'GIT_LFS_STATUS=UNVERIFIED',
+                      'FORKS_STATUS=UNVERIFIED', 'HIDDEN_REFS_STATUS=UNVERIFIED',
+                      'GITHUB_SURFACES_STATUS=UNVERIFIED', 'PREPUBLIC_GATE=FAIL',
+                      'AUDIT_STATUS=BLOCKED', 'EXIT_STATUS=66'):
+            self.assertIn(field + '\n', status)
 
     def test_merge_resolution_only_is_detected(self):
         run('git', 'checkout', '-qb', 'feature', cwd=self.source)
@@ -117,7 +137,50 @@ sys.exit(0)
         self.env['GITLEAKS_CONFIG'] = '/untrusted/config.toml'
         self.env['GITLEAKS_CONFIG_TOML'] = '[[rules]]\u005cnid = "untrusted"'
         result = self.scan()
-        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.returncode, 66, result.stderr)
+
+    def test_bad_checksum_never_executes_scanner(self):
+        original = self.manifest.read_text()
+        digest = original.splitlines()[0][7:]
+        self.manifest.write_text(original.replace(digest, '0' * 64))
+        result = self.scan()
+        self.assertEqual(result.returncode, 67)
+        out = self.root / 'out'
+        self.assertFalse((out / 'gitleaks-version.private.txt').exists())
+        self.assertFalse((out / 'gitleaks-help.private.txt').exists())
+        self.assertIn('SCAN_STATUS=NOT_RUN', (out / 'status.private.env').read_text())
+
+    def test_untrusted_provenance_rejected(self):
+        original = self.manifest.read_text()
+        self.manifest.write_text(original.replace(
+            'SOURCE=https://github.com/gitleaks/gitleaks/releases/tag/TEST-FIXTURE',
+            'SOURCE=https://untrusted.invalid/not-an-official-release'))
+        result = self.scan()
+        self.assertEqual(result.returncode, 67)
+        self.assertFalse((self.root / 'out/gitleaks-version.private.txt').exists())
+
+    def test_missing_scanner_never_executes(self):
+        (self.bin / 'gitleaks').unlink()
+        result = self.scan()
+        self.assertEqual(result.returncode, 69)
+        self.assertFalse((self.root / 'out/gitleaks-version.private.txt').exists())
+        self.assertIn('SCAN_STATUS=NOT_RUN', (self.root / 'out/status.private.env').read_text())
+
+    def test_missing_manifest_blocks(self):
+        self.manifest.unlink()
+        result = self.scan()
+        self.assertEqual(result.returncode, 67)
+        self.assertIn('PREPUBLIC_GATE=FAIL', (self.root / 'out/status.private.env').read_text())
+
+    def test_clean_scan_is_not_prepublic_pass(self):
+        result = self.scan()
+        self.assertEqual(result.returncode, 66)
+        status = (self.root / 'out/status.private.env').read_text()
+        for key in ('GIT_LFS', 'FORKS', 'HIDDEN_REFS', 'GITHUB_SURFACES'):
+            self.assertIn(key + '_STATUS=UNVERIFIED', status)
+        self.assertIn('HUMAN_REVIEW_STATUS=NOT_RUN', status)
+        self.assertIn('PREPUBLIC_GATE=FAIL', status)
+        self.assertIn('AUDIT_STATUS=BLOCKED', status)
 
     def test_existing_destination_is_not_overwritten(self):
         out = self.root / 'out'
