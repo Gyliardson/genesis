@@ -132,6 +132,8 @@ O adaptador recebe `ready_jobs` com N variável inclusive N=0, produz `score(job
 
 Todas as heurísticas, rede não treinada, aleatório-válido e policy treinada passam por **mesma** ObservationV0, máscara, safety, condições de erro e orçamento. FCFS scanning desempata por (arrival,id), SJF usa **estimated_duration**, random-valid escolhe uniformemente dentro da máscara com RNG da policy, fit usa demandas públicas. FCFS estrito incompatível em A permanece fora de B* principal. Nenhum modelo tem acesso a duração real, futuras chegadas, trace_hash, split, seed exógena, metrics evaluator ou estimadores calibrados em TEST.
 
+**R22-07: proveniência e não interferência dos IDs/estimates.** IDs públicos devem ser gerados por ordem/codificação pública estável **independente de `actual_duration`, classe oculta, distribuição do split ou futuros**; auditar gerador e derivação de seeds (incluindo casos adversariais de ID correlacionado à truth). É lícito derivar `estimated_duration` de `actual_duration` **offline** no gerador para obter erros calibrados/viés, mas só o valor estimado, nunca a truth nem metadados privados, é projetado. **Relabeling oracle:** substituir todos os IDs por uma bijeção independente da truth sem alterar chegada, CPU, memória, estimativa ou estado público; para score único exigir mesma escolha de atributos após desfazer o relabeling. Se scores/arrival empatam e ID é tie-break público, a escolha do ID exato pode mudar: verificar equivalência da classe pública empatada, sem alegar igualdade que o contrato não garante. Outro oráculo injeta IDs derivados intencionalmente de `actual_duration`/split e deve **rejeitar a geração**; testar explicitamente normalização, tie-break, log público e manifestos de split. Alterar só verdade/futuro preservando atributos públicos e policy RNG deve preservar **distribuição da primeira ação**, mas diferenças após chegada/conclusão públicas são legais. Permutar ordem de entrada com IDs fixos **não** comprova ausência de ID leakage.
+
 Os geradores de chegada, duração, recursos, estimativas e policy RNG usam streams derivados por hash criptográfico estável de namespace/split/scenario/replicate/stream, sem `hash()` do Python; geração completa antes da execução. Validação e TEST têm seeds/famílias reservadas e manifests distintos. Mesmo workload exógeno e mesmo protocolo de segurança para todas as policies. Versões dos contratos acompanham checkpoint serializado; nenhuma desserialização executa código arbitrário.
 
 ## 7. Plano de verificação (não executado nesta missão documental)
@@ -141,10 +143,10 @@ Os geradores de chegada, duração, recursos, estimativas e policy RNG usam stre
 | Positivos | Golden A/B/C; duas dimensões de recursos; admissões consecutivas no mesmo tick; FULL DRAIN antes do budget; COMPLETE em H_e incluído | Event trace determinístico, métricas calculadas à mão, logs/hashes |
 | Negativos | ID duplicado, requisito zero/negativo/acima capacidade, estimate/actual inválidos, chegada negativa, clock regressivo, START duplo, double-release, RUNNING como READY, máscara desatualizada, WAIT proibido, unknown ID, NaN/Inf no scorer, job chegando exatamente em H_a, START em H_e, stall/timeout | Rejeição sem mutação parcial, motivo e outcomes explícitos |
 | Propriedades | Conservação por recurso após **toda** transição, 0<=allocated<=capacity; relógio monotônico; início>=chegada; conclusão=início+actual; monotonicidade do conjunto COMPLETED; READY count decresce em cada START no mesmo t | Property-based/geração determinística + contraexemplos minimizados/seeds |
-| Reproducibilidade | Ordem de inserção/permutação de jobs com IDs fixos; replay de seed/config/version gera eventos e hash iguais; policy RNG draws extras não alteram trace exógeno; ordem de comparação de policies não altera workloads | Hash estável, manifests e snapshots |
-| Não vazamento | Mudar apenas `actual_duration`/futuros/RNG privado mantendo observação pública fixa não muda projection/mask/decisão inicial; refletir alteração em duração posterior **somente** via eventos públicos; não passar IDs como feature neural | Testes de noninterference no projector, adapter, tie-break e normalization |
+| Reproducibilidade | Ordem de inserção/permutação de jobs com IDs fixos **e** relabeling bijetivo de IDs independente de truth, distinguindo tie público de score único; replay seed/config/version em logs/hash iguais; policy RNG com draws adicionais não altera trace exógeno; ordem de comparação não altera workload | Manifesto + contraexemplo de ID derivado da truth, hashes, snapshots |
+| Não vazamento | Alterar só actual/future/seed privado mantendo observation pública não muda projeção e distribuição de ação inicial; estimate pode derivar offline da truth mas apenas estimate visível; ID relabeling, auditoria de log/normalizer/split e rejeição de ID codificando segredo | Testes de noninterference no projector, adapter, ID generator, tie-break e normalization |
 | Equivariância | `scores(πX)=πscores(X)`, ação por ID invariável em permutação; N=0/1/K/K+1/N grande; candidato ilegal com escore máximo nunca é selecionado | Propriedades de scorer/mask e stress de filas |
-| Avaliação | Sem job omitido em cutoff; denominator fixado na coorte; falhas não têm média completa; TRAIN/VAL/TEST isolados; intervalos sobre unidades independentes, não cada job/decisão | Fixtures de métricas e manifests por split |
+| Avaliação | Cada job FUTURE/READY/RUNNING/COMPLETED/REJECTED e run_status/stop_reason separados; Policy decide exception/no-return/decision-timeout; grade K×n_k×E de pares completa, RNG de B* estocástica, CI cruzado com cobertura simulada em VAL; guardrails/FCFS de protocolo e datasets isolados | Fixtures de células ausentes e denominadores, relatório de failures, piloto pré-TEST (NOT_RUN) |
 
 Os oráculos e propriedades validam **corretude do simulador**, não utilidade do scheduler nem aprendizado. CI de main/#21 falhou antes de causa diagnóstica estabelecida: falha operacional externa deve ser reportada separada de qualquer regressão específica.
 
@@ -153,32 +155,48 @@ Os oráculos e propriedades validam **corretude do simulador**, não utilidade d
 | Sequência | Issues | Entrega mínima, condição de entrada e saída |
 | --- | --- | --- |
 | Gate científico | [#2](https://github.com/Gyliardson/genesis/issues/2), [#3](https://github.com/Gyliardson/genesis/issues/3), [#4](https://github.com/Gyliardson/genesis/issues/4) | Resolver WAIT/FCFS, cutoff, erro, fairness/fitness provisória e findings PR #21; localizar primeira causa CI; registrar decisão revisada sem falsificar evidência |
-| 1 — Sim core | [#5](https://github.com/Gyliardson/genesis/issues/5) | Domain states/atomic reservation/event ordering, goldens A/B/C e propriedades de capacidade; SimPy vs DES ainda OPEN até benchmark isomórfico |
+| 1 — Sim core | [#5](https://github.com/Gyliardson/genesis/issues/5) | **Dependências formais #3 e #4 (ver Issue #5):** contrato semântico e scaffold/CI validado para implementação; oráculos A/B/C, invariantes e replay primeiro. **Correctness** do core é gate distinto de benchmark; escolha SimPy vs DES D-006 depende de equivalência e profiling posteriores |
 | 2 — Workloads | [#6](https://github.com/Gyliardson/genesis/issues/6) | Generator exógeno/streams/versioned manifest; requer #3 e interface/core #5; testes noninterference |
 | 3 — Heurísticas | [#7](https://github.com/Gyliardson/genesis/issues/7) | FCFS-scanning, estimated-SJF, random-valid, fit; requer #3/#5/#6, todas mesmo protocolo, sem truth leakage |
-| 4 — Evaluation | [#8](https://github.com/Gyliardson/genesis/issues/8) | Métricas e failure accounting, replay pareado, CI/profiling e confronto de simuladores; depende #5/#6/#7. **Primeiro experimento válido** = golden tests + baselines em traces idênticos e DRAIN confiável, ainda sem rede |
+| 4 — Evaluation | [#8](https://github.com/Gyliardson/genesis/issues/8) | **Depende #5/#6/#7:** métricas/status e benchmark das heurísticas em traces exógenos idênticos (primeiro experimento válido, sem rede). **Gate de engine selection D-006 separado:** benchmark de profiling SimPy vs DES só depois de correção isomórfica por golden traces; não inferir validade estatística do EXP-001 de correção/profiling |
 | 5 — Neural | [#9](https://github.com/Gyliardson/genesis/issues/9) | Policy com N variável, mask, random weights, permutation/leakage tests; depende #3/#5/#8 e interface #7 |
 | 6 — Evolution | [#10](https://github.com/Gyliardson/genesis/issues/10) | GA pequeno versus random search, budgets/seeds e custo; depende #2/#8/#9, **não** treinar usando TEST |
 | 7 — Export/reload | [#11](https://github.com/Gyliardson/genesis/issues/11) | Checkpoint versionado/normalização + replay e rejeição de incompatibilidades; depende #9/#10 |
-| 8 — EXP-001 | [#12](https://github.com/Gyliardson/genesis/issues/12) | VAL escolhe B*, TEST reservado, variação de seeds/shift, IC pareado/limites/custos; depende #7/#8/#10/#11 e regras congeladas; [#19](https://github.com/Gyliardson/genesis/issues/19) é comparação evolutiva **posterior** |
+| 8 — EXP-001 | [#12](https://github.com/Gyliardson/genesis/issues/12) | **Depende #7/#8/#10/#11 e #2/#3 ratificadas:** inferência confirmatória (terceiro gate independente) exige desenho K×n_k×E, IC cruzado/power validados, B* VAL, TEST congelado, guardrails/stop/budgets e tratamento de falhas. [#19](https://github.com/Gyliardson/genesis/issues/19) é **posterior** |
 
-**Próximo gate antes de ratificação:** revisão independente do PR #21 no exact-head, decisão explícita #3 para D-017 e cenários de WAIT, acordo de #2 sobre fitness/fairness e verificação de oráculos/cutoffs. Sem isso, somente propostas de documentação podem avançar. Toda arquitetura pode ser revisada conforme evidência; alteração material de action/observation/horizon exige schema version novo e repetição dos benchmarks afetados.
+**Próximo gate antes de ratificação:** re-review do PR #21 **atualizado** em `3f446682473be872d681dfed9a229272d72ad4f4`, revisão exata do PR #22 no HEAD novo e decisão explícita #3 para D-017 e cenários de WAIT, acordo de #2 sobre fitness/fairness e verificação de oráculos/cutoffs. Sem isso, somente propostas de documentação podem avançar. Toda arquitetura pode ser revisada conforme evidência; alteração material de action/observation/horizon exige schema version novo e repetição dos benchmarks afetados.
 
 ## 9. Findings de revisão independente do PR #21 (exact-head)
 
-A revisão consultiva [REVIEW-01 do PR #21](https://github.com/Gyliardson/genesis/pull/21) foi publicada sobre `2f29adf740c21f57190064db68f77f71d9c655f9` e classifica o protocolo como **CHANGES_REQUIRED**, não `APPROVED`. Esta consolidação **não edita** os três arquivos desse PR. Disposição na proposta de #3:
+A revisão consultiva [REVIEW-01 do PR #21](https://github.com/Gyliardson/genesis/pull/21) analisou `2f29adf740c21f57190064db68f77f71d9c655f9` e apontou CHANGES_REQUIRED. **O PR #21 foi atualizado** para `3f446682473be872d681dfed9a229272d72ad4f4`: H1 única, FCFS-scanning candidato, estimando R_geo com grade K×n_k e crossed bootstrap, custos end-to-end e histórico público permitido como hipótese. Essas revisões são autoria do PR #21 e **não significam revisão independente do novo SHA nem ratificação**. Esta missão não edita os três arquivos desse PR. Disposição na proposta de #3:
 
 | Finding | Integração em CONTRACT-01 | Gate remanescente / owner |
 | --- | --- | --- |
-| F01 BLOCKER (FCFS estrito/WAIT) | D-017, opções A/B/C e oráculo HOL documentados | Decisão explícita em #3 e correção correspondente do PR #21 pelo respectivo autor |
-| F02 MAJOR (duas H1 conflitantes) | Uma família-alvo confirmatória versus subgrupos exploratórios em §5.1 | Autor do PR #21 harmoniza hipótese antiga e nova em `docs/experiments.md`; #2 pré-registra |
-| F03 MAJOR (razão agregada/IC/B*) | Estimando `R_geo` candidato explícito, família/seed/pareamento/IC e B* em VAL no §5.1 | #2/#8 revisam escolha e guardrails; autor do PR #21 alinha protocolo original |
-| F04 MAJOR (drain survivor bias) | Falhas tornam H1 **não demonstrada**, sem filtrar cenários; end_tick e censura claros | Piloto define budget, todos os pares e análise de sensibilidade; PR #21 alinha wording |
-| F05 MAJOR (negativos com WAIT) | Igualdade só sob START forçado + trajetória legal única; WAIT altera teste esperado | Autor do PR #21 corrige alegações de igualdade irrestrita |
-| F06 MAJOR (cobertura #1/#2) | D-007/008/010 e #9/#10/#19 consolidados como **research proposals**, sem ACCEPTED | Responsáveis por pesquisa/PR #21 devem consolidar seus arquivos sob ownership, revisão exata posterior |
-| F07 MINOR (backfilling/custo) | Scanning ≠ EASY/conservative backfill; medir overhead total de mask + decision + validation | Ajustar terminologia também no PR #21 |
-| F08 MINOR (bibliografia) | Sem alterar bibliografia fora de ownership | Autor do PR #21 verifica data conferência/preprint/publicação RLTune |
-| F09 NOTE (noninterference) | Schema ObservationV0 fechado e testes de projeção/IDs/normalização | Implementar propriedades em #5/#9 e validar no código |
+| F01 BLOCKER (FCFS estrito/WAIT) | D-017 e oráculo HOL documentados; PR #21 atualizado propõe A/FCFS-scanning | D-017 continua OPEN em #3; novo exact-head review de #21/#22 |
+| F02 MAJOR (duas H1 conflitantes) | PR #21 atualizado mantém única H1 confirmatória e H2/H3 exploratórias; §5.1 alinha proposta | Ratificação #2/#8 e review de novo SHA ainda pendentes |
+| F03 MAJOR (razão agregada/IC/B*) | PR #21 propõe R_geo por cenário/família, B* VAL e crossed bootstrap; §5.1 trata replicações estocásticas e dependência cruzada R22 | D-025 OPEN, cobertura de IC e escolhas metodológicas não testadas |
+| F04 MAJOR (drain survivor bias) | PR #21 atualizado proíbe seleção de pares completos; outcomes separados no #22 | Gate de falhas/thresholds a ratificar; simulador NOT_RUN |
+| F05 MAJOR (negativos com WAIT) | PR #21 atualizado condiciona igualdade à trajetória única e START obrigatório | Teste negativo só após contrato A/B ratificado |
+| F06 MAJOR (cobertura #1/#2) | PR #21 atualizado sintetiza #9/#10/#19, sem construir algoritmos | Revisão de cobertura #1/#2 no novo SHA requerida |
+| F07 MINOR (backfilling/custo) | Scanning ≠ EASY; PR #21 atualizado explicita custos end-to-end | Benchmark overhead NOT_RUN |
+| F08 MINOR (bibliografia) | PR #21 atualizado distingue SoCC'25/preprint dezembro 2025/ACM janeiro 2026 | Re-review da fonte pertence PR #21 |
+| F09 NOTE (noninterference) | Schema Observation e testes de IDs relabeling/projeção/normalização/splits ampliados | Propriedades #5/#6/#9 NOT_RUN |
+
+### 9.1 Matriz de disposição REVIEW-02 — [#5613800187](https://github.com/Gyliardson/genesis/pull/22#pullrequestreview-5613800187)
+
+| Finding | Disposição documentada no PR #22 | Situação pendente |
+| --- | --- | --- |
+| **R22-01 BLOCKER** | §4 recomenda **A** como candidato mínimo, mantém **B** alternativa e C inválido; versionamento dos actions, oráculos HOL/último evento | **D-017 OPEN / DECISION_REQUIRED** na #3; não ACCEPTED |
+| **R22-02 MAJOR** | §5.1 especifica unidade-alvo e grade completa r×i×e, resampling por **blocos cruzados** e teste de cobertura antes de TEST | D-025 OPEN; IC não calibrado |
+| **R22-03 MAJOR** | §5.1 separa training/scenario/policy RNG, E repetições de baseline estocástica e variância de B* em VAL | E/CRN/budgets pré-registrar; NO RUN |
+| **R22-04 MAJOR** | §5.1 fixa pergunta candidata relativa, diferencia pooled ratio, define coorte não vazia, estrato vazio, B* VAL, δ, guardrails/IC/FWER | Utilidade/limiares/estimando requerem #2/#8; D-025 OPEN |
+| **R22-05 MAJOR** | §2/§3/§5 distinguem run_status/stop_reason de job_phase/event_observed, causality/t_stop e exception/no-return/wall timeout | D-021 OPEN, testes de execução NOT_RUN |
+| **R22-06 MAJOR** | §2 usa assinatura versionada `reset(policy_seed, public_config)` conforme PR #21 atualizado; A_v0/B_v1; histórico desabilitado no mínimo/opt-in versionado | Harmonização final & revisão exata PR #21/#22 pendentes |
+| **R22-07 MINOR** | §6/§7 exigem relabeling, teste de ID-truth adversarial, estimate offline e auditoria log/normalização/splits | Implementação das propriedades #5/#6/#9 NOT_RUN |
+| **R22-08 MINOR** | §8 explicita dependência formal #3 **e #4** de #5; separa correctness/profiling/benchmark/inferência | #4 causa CI ainda UNVERIFIED |
+| **R22-09 NOTE** | Preservados COMPLETE→ARRIVE, reservas atômicas, cutoffs, golden A/B/C, prevenção de survivor bias | Proposta documental, não simulador provado |
+
+**A matriz é disposição do autor, não revisão independente nova.** R22-01 não foi aceito nem fechado por ratificação; novo SHA invalida o parecer exact-head antigo para as regiões alteradas. Correções no PR #21 permanecem fora do ownership.
 
 **Impacto de revisão:** D-017, D-021, D-010/D-025 e protocolo inferencial continuam sujeitos a revisão científica, decisão explícita e findings corrigidos. A aceitação de #3/EXP-001 não decorre deste documento, do comentário de reviewer, de CI ou do simples estado Draft. Nova revisão deve usar HEAD exato de cada PR relevante.
 
