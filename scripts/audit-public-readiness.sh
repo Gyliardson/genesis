@@ -4,10 +4,11 @@
 set -Eeuo pipefail
 umask 077
 
-usage() { printf 'Uso: %s <URL-git-sem-credenciais> <diretorio-novo-privado>\n' "$0" >&2; }
-if [ "$#" -ne 2 ]; then usage; exit 64; fi
+usage() { printf 'Uso: %s <URL-git-sem-credenciais> <diretorio-novo-privado> <manifesto-sha256-prevalidado>\n' "$0" >&2; }
+if [ "$#" -ne 3 ]; then usage; exit 64; fi
 repo_url=$1
 out=$2
+trust_manifest=$3
 
 # Validar ANTES de qualquer chamada git ou criação de mirror. Jamais ecoar entrada inválida.
 case "$repo_url" in
@@ -34,7 +35,7 @@ esac
 if [ -e "$out" ] || [ -L "$out" ]; then
   echo 'Diretório de auditoria já existe; evidências não serão sobrescritas.' >&2; exit 73
 fi
-for bin in git gitleaks sha256sum; do
+for bin in git sha256sum; do
   command -v "$bin" >/dev/null || { echo "Ferramenta ausente: $bin" >&2; exit 69; }
 done
 mkdir -m 700 -- "$out"
@@ -42,17 +43,71 @@ chmod 700 -- "$out"
 out=$(cd -- "$out" && pwd -P)
 mirror="$out/mirror.git"
 
+# Estados machine-readable são sempre bloqueantes para publicação.
+scan_status=NOT_RUN
+coverage_status=NOT_RUN
+human_status=NOT_RUN
+lfs_status=UNVERIFIED
+forks_status=UNVERIFIED
+hidden_refs_status=UNVERIFIED
+github_surfaces_status=UNVERIFIED
+
 # Todo stdout/stderr potencialmente confidencial de comandos externos fica em arquivos 0600.
 # O trap registra uma indicação privada e emite somente um erro genérico.
 cleanup() {
   local status=$?
   trap - EXIT
+  if [ "$status" -eq 0 ]; then status=66; fi
+  printf 'SCAN_STATUS=%s\nCOVERAGE_STATUS=%s\nHUMAN_REVIEW_STATUS=%s\nGIT_LFS_STATUS=%s\nFORKS_STATUS=%s\nHIDDEN_REFS_STATUS=%s\nGITHUB_SURFACES_STATUS=%s\nAUDIT_STATUS=BLOCKED\nPREPUBLIC_GATE=FAIL\nEXIT_STATUS=%s\n' \
+    "$scan_status" "$coverage_status" "$human_status" \
+    "$lfs_status" "$forks_status" "$hidden_refs_status" \
+    "$github_surfaces_status" "$status" > "$out/status.private.env"
   printf '%s\n' "$status" > "$out/audit-exit-code.private.txt"
-  if [ "$status" -ne 0 ]; then
-    echo 'AUDIT_NOT_PASSED: consultar evidências privadas; nenhuma conclusão de segurança.' >&2
-  fi
+  echo 'AUDIT_BLOCKED: PREPUBLIC_GATE=FAIL; verifique evidências somente em diretório privado.' >&2
+  exit "$status"
 }
 trap cleanup EXIT
+
+# TRUST-ANCHOR: manifesto preparado ANTES do trabalho pelo responsável de segurança,
+# fora do checkout, cujo SHA foi obtido de fonte independente identificada e aprovada.
+# Manifesto exige quatro linhas LITERAIS (não é um script e nunca é "source"):
+# SHA256=<64 hex>
+# SOURCE=https://github.com/gitleaks/gitleaks/releases/...
+# DIGEST_SOURCE=<referência verificável independente da distribuição>
+# VERIFIED_BY=<identificador do responsável que validou a referência>
+if [ ! -f "$trust_manifest" ] || [ -L "$trust_manifest" ] ||
+   [ "$(stat -c '%a' "$trust_manifest" 2>/dev/null)" != 600 ]; then
+  echo 'TRUST_NOT_VERIFIED: manifesto ausente, symlink ou permissões diferentes de 0600.' >&2
+  exit 67
+fi
+mapfile -t trust_lines < "$trust_manifest"
+if [ "${#trust_lines[@]}" -ne 4 ] ||
+   [[ ! "${trust_lines[0]}" =~ ^SHA256=[a-fA-F0-9]{64}$ ]] ||
+   [[ ! "${trust_lines[1]}" =~ ^SOURCE=https://github[.]com/gitleaks/gitleaks/releases/.+$ ]] ||
+   [[ ! "${trust_lines[2]}" =~ ^DIGEST_SOURCE=[^[:space:]]{8,}$ ]] ||
+   [[ ! "${trust_lines[3]}" =~ ^VERIFIED_BY=[A-Za-z0-9_.@:-]{3,}$ ]]; then
+  echo 'TRUST_NOT_VERIFIED: manifesto inválido ou procedência não identificada.' >&2
+  exit 67
+fi
+expected_digest="${trust_lines[0]#SHA256=}"
+expected_digest="${expected_digest,,}"
+candidate=$(type -P gitleaks || true)
+if [ -z "$candidate" ] || [ ! -f "$candidate" ] || [ ! -x "$candidate" ]; then
+  echo 'SCANNER_NOT_AVAILABLE: nenhuma execução de binário desconhecido.' >&2
+  exit 69
+fi
+# Copiar para diretório privado: verificar o MESMO objeto que será executado,
+# reduzindo troca de path/arquivo entre verificação e invocação.
+scanner="$out/gitleaks.verified"
+cp -- "$candidate" "$scanner"
+chmod 500 "$scanner"
+digest_actual=$(sha256sum "$scanner" | cut -d ' ' -f1)
+if [ "$digest_actual" != "$expected_digest" ]; then
+  echo 'TRUST_NOT_VERIFIED: checksum divergente, execução bloqueada.' >&2
+  exit 67
+fi
+printf '%s\n' "$digest_actual" > "$out/gitleaks-verified-digest.private.txt"
+printf '%s\n' "${trust_lines[1]}" "${trust_lines[2]}" "${trust_lines[3]}" > "$out/scanner-source.private.txt"
 
 export GIT_TERMINAL_PROMPT=0
 # Gitleaks config via ambiente nunca herda conteúdo não auditado; regras padrão
@@ -60,12 +115,12 @@ export GIT_TERMINAL_PROMPT=0
 unset GITLEAKS_CONFIG GITLEAKS_CONFIG_TOML
 
 git --version > "$out/git-version.private.txt" 2> "$out/git-version.stderr.private.txt"
-gitleaks version > "$out/gitleaks-version.private.txt" 2> "$out/gitleaks-version.stderr.private.txt"
-sha256sum "$(command -v gitleaks)" > "$out/gitleaks-binary.sha256.private.txt" 2> "$out/hash.stderr.private.txt"
+"$scanner" version > "$out/gitleaks-version.private.txt" 2> "$out/gitleaks-version.stderr.private.txt"
+sha256sum "$scanner" > "$out/gitleaks-binary.sha256.private.txt" 2> "$out/hash.stderr.private.txt"
 
 # Sem pipefail/grep -q em produtor de help: SIGPIPE não gera falso negativo.
-gitleaks git --help > "$out/gitleaks-help.private.txt" 2> "$out/gitleaks-help.stderr.private.txt"
-gitleaks --help > "$out/gitleaks-root-help.private.txt" 2> "$out/gitleaks-root-help.stderr.private.txt"
+"$scanner" git --help > "$out/gitleaks-help.private.txt" 2> "$out/gitleaks-help.stderr.private.txt"
+"$scanner" --help > "$out/gitleaks-root-help.private.txt" 2> "$out/gitleaks-root-help.stderr.private.txt"
 for option in --log-opts --ignore-gitleaks-allow --gitleaks-ignore-path --report-path --redact; do
   if ! grep -F -- "$option" "$out/gitleaks-help.private.txt" "$out/gitleaks-root-help.private.txt" >/dev/null; then
     echo 'Scanner incompatível com flags de segurança exigidas.' >&2; exit 65
@@ -101,6 +156,7 @@ git -C "$mirror" for-each-ref --format='%(objectname)%09%(refname)' > "$out/loca
 # Comparar refs anunciadas ANTES/DEPOIS e objeto local; refs não reconhecidas
 # também são lacuna, nunca descartadas silenciosamente.
 coverage_gap=0
+coverage_status=UNVERIFIED
 if [ ! -s "$out/remote-before.private.tsv" ]; then
   echo 'EMPTY_REMOTE_ADVERTISEMENT: incomplete reference inventory' >> "$out/coverage-gaps.private.txt"
   coverage_gap=1
@@ -143,20 +199,26 @@ printf 'GIT_LFS=UNVERIFIED: pointers/history and remote LFS objects require sepa
 # Flags testadas pelo preflight; scanner lida com -m (merge diff por parent).
 # Saída do scanner e relatório 100% redigidos, NUNCA stdout/stderr do terminal.
 set +e
-( cd -- "$out" && gitleaks git --redact=100 --ignore-gitleaks-allow \
+( cd -- "$out" && "$scanner" git --redact=100 --ignore-gitleaks-allow \
   --gitleaks-ignore-path "$out/empty-ignore.private.txt" \
   --log-opts='--all --full-history -m' \
   --report-format=json --report-path "$out/gitleaks.redacted.private.json" \
   "$mirror" ) > "$out/gitleaks.stdout.private.txt" 2> "$out/gitleaks.stderr.private.txt"
-scan_status=$?
+scanner_exit=$?
 set -e
-printf '%s\n' "$scan_status" > "$out/gitleaks-exit-code.private.txt"
-if [ "$scan_status" -ne 0 ]; then
+if [ "$scanner_exit" -eq 0 ]; then scan_status=PASS
+elif [ "$scanner_exit" -eq 1 ]; then scan_status=FINDINGS
+else scan_status=ERROR
+fi
+printf '%s\n' "$scanner_exit" > "$out/gitleaks-exit-code.private.txt"
+if [ "$scanner_exit" -ne 0 ]; then
   echo 'SCAN_NOT_PASSED: resultado ou erro do detector demanda triagem confidencial.' >&2
-  exit "$scan_status"
+  exit "$scanner_exit"
 fi
 if [ "$coverage_gap" -ne 0 ]; then
+  coverage_status=FAIL
   echo 'COVERAGE_UNVERIFIED: refs/objetos divergentes; análise privada necessária.' >&2
   exit 66
 fi
-echo 'Scan de patches de objetos alcançáveis anunciado sem finding; Git LFS/forks/refs ocultas/superfícies GitHub ainda UNVERIFIED.'
+echo 'SCAN_STATUS=PASS; COVERAGE_STATUS=UNVERIFIED; HUMAN_REVIEW_STATUS=NOT_RUN; PREPUBLIC_GATE=FAIL.'
+exit 66
