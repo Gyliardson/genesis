@@ -45,7 +45,10 @@ if not args or args[0] != 'git': sys.exit(3)
 assert '--ignore-gitleaks-allow' in args
 assert '--all --full-history -m' in ' '.join(args)
 assert '--gitleaks-ignore-path' in args
+assert 'GITLEAKS_CONFIG' not in os.environ
+assert 'GITLEAKS_CONFIG_TOML' not in os.environ
 repo = args[-1]
+assert os.getcwd() == os.path.dirname(repo)
 proc = subprocess.run(['git', '-C', repo, 'log', '-p', '-m', '--all', '--full-history'], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 print('PRIVATE_SCANNER_OUTPUT_DO_NOT_STREAM')
 if proc.returncode: sys.exit(3)
@@ -109,6 +112,12 @@ sys.exit(0)
         result = self.scan()
         self.assertEqual(result.returncode, 66, result.stderr)
         self.assertIn('UNCLASSIFIED', (self.root/'out/coverage-gaps.private.txt').read_text())
+
+    def test_inherited_scanner_config_is_ignored(self):
+        self.env['GITLEAKS_CONFIG'] = '/untrusted/config.toml'
+        self.env['GITLEAKS_CONFIG_TOML'] = '[[rules]]\u005cnid = "untrusted"'
+        result = self.scan()
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_existing_destination_is_not_overwritten(self):
         out = self.root / 'out'
