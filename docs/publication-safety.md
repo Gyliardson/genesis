@@ -29,10 +29,10 @@ Procedimento versionável: `scripts/audit-public-readiness.sh` (local/autorizado
 ```bash
 # Configurar autenticação GitHub sem token em argumentos, commit ou terminal compartilhado.
 umask 077
-bash scripts/audit-public-readiness.sh 'https://github.com/Gyliardson/genesis.git' "$HOME/genesis-private-audit-$(date +%Y%m%d)"
+bash scripts/audit-public-readiness.sh 'https://github.com/Gyliardson/genesis.git' "$HOME/genesis-private-audit-$(date +%Y%m%d)" "$HOME/security-approved-gitleaks.manifest"
 ```
 
-O script registra versão e hash binário do scanner, `refs`, quantidade de commits, lista de objetos alcançáveis, `git fsck` e Gitleaks com `--all --full-history -m` (patches de todos os parents dos merges). Captura as refs remotas de branches/tags e tenta `refs/pull/*/{head,merge}`. O wrapper zera `GITLEAKS_CONFIG`/`GITLEAKS_CONFIG_TOML`, usa regras embutidas no binário registrado, ignore vazio, `--ignore-gitleaks-allow` e nenhum baseline. **Regras embutidas podem conter allowlists**: não alegar ausência absoluta de supressão. `gitleaks version` e SHA-256 do executável ficam em diretório privado; verificação de autenticidade/proveniência exige fonte confiável independente. Saída e relatórios ficam privados. Código de saída diferente de zero interrompe o gate, inclusive achado confirmado ou erro de ferramenta. Triar falsos positivos separadamente sem copiar segredos em GitHub.
+O script requer manifesto independente de confiança **antes da primeira execução**, e só então registra versão e hash binário do scanner, `refs`, quantidade de commits, lista de objetos alcançáveis, `git fsck` e Gitleaks com `--all --full-history -m` (patches de todos os parents dos merges). Captura as refs remotas de branches/tags e tenta `refs/pull/*/{head,merge}`. O wrapper zera `GITLEAKS_CONFIG`/`GITLEAKS_CONFIG_TOML`, usa regras embutidas no binário registrado, ignore vazio, `--ignore-gitleaks-allow` e nenhum baseline. **Regras embutidas podem conter allowlists**: não alegar ausência absoluta de supressão. `gitleaks version` e SHA-256 do executável ficam em diretório privado; verificação de autenticidade/proveniência exige fonte confiável independente. Saída e relatórios ficam privados. Código de saída diferente de zero interrompe o gate, inclusive achado confirmado ou erro de ferramenta. Triar falsos positivos separadamente sem copiar segredos em GitHub.
 
 **Cobertura negativa e limites:** scan de patch Git não verifica semanticamente toda propriedade/dado pessoal, blobs inacessíveis ao servidor, objetos dangling não anunciados, refs ocultas/não baixadas, arquivos Git LFS não obtidos, dados de forks independentes, caches, snapshots de terceiros nem conteúdo de Issues/PR/Actions. `git fsck` em clone verifica somente o conjunto de objetos efetivamente transferidos. Registrar SHA/refs e eventuais falhas de fetch; não chamar varredura completa sem revisão dessas lacunas.
 
@@ -132,3 +132,29 @@ O pacote de testes usa explicitamente **test-double Gitleaks**, validando a pass
 A execução real deve usar clone privado autenticado, identificar divergências refs/objetos, revisar Git LFS (incluindo objetos efetivamente baixados), forks independentes, refs efêmeras, logs e annotations. `git fsck` apenas vê objetos transferidos; zero findings em patches não equivale a zero segredos, nem é clearance de privacidade ou licenciamento.
 
 **PUB-05:** manter plano de lock/hashes em `docs/reproducibility.md` — não foi criado lock testado. **PUB-06:** manter `SECURITY.md` — nenhum canal confidencial operacional foi comprovado. `LICENSE` permanece ausente e `LicenseRef-Proprietary` inalterado; a investigação de CI é da Issue #4. **PREPUBLIC_GATE=FAIL**.
+
+
+## R03-01/R03-02 — status explícito e procedência pré-execução
+
+**SCAN_PASS != AUDIT_PASS != PREPUBLIC_GATE=PASS.** O wrapper não autoriza publicação e **nunca retorna exit code 0**. Um scanner que retorna 0 significa somente patches alcançáveis sem finding naquele detector. O wrapper retorna **66** quando os demais gates seguem pendentes. Finding do scanner (1), trust/digest inválido (67), scanner ausente (69) e erros internos também interrompem. Não usar `set +e`, `|| true` nem ignorar o exit code.
+
+O arquivo privado `status.private.env`, criado sob diretório 0700 com `umask 077`, tem estes estados verificáveis: `SCAN_STATUS=NOT_RUN|PASS|FINDINGS|ERROR`; `COVERAGE_STATUS=NOT_RUN|UNVERIFIED|FAIL`; `HUMAN_REVIEW_STATUS=NOT_RUN`; `GIT_LFS_STATUS=UNVERIFIED`; `FORKS_STATUS=UNVERIFIED`; `HIDDEN_REFS_STATUS=UNVERIFIED`; `GITHUB_SURFACES_STATUS=UNVERIFIED`; `AUDIT_STATUS=BLOCKED`; `PREPUBLIC_GATE=FAIL` e `EXIT_STATUS` não zero. Nunca executar esse arquivo como shell. Falhas antes da criação do diretório deixam arquivo ausente, o que **não** significa sucesso. Divergência de refs/objetos pode mudar `COVERAGE_STATUS` para `FAIL`; estado de LFS, forks, refs ocultas, GitHub/Actions/annotations e avaliação humana permanecem não verificados até trabalho independente.
+
+### Manifesto externo de confiança — antes de `gitleaks version`
+
+Um responsável autorizado deve verificar por canal independente a procedência/distribuição oficial do scanner, a versão, a arquitetura e o SHA-256 **obtido de evidência confiável externa ao executável instalado**. Criar fora do repositório/checkout um manifesto privado, arquivo regular modo 0600 com quatro linhas literais (não executáveis):
+
+~~~text
+SHA256=<64 dígitos hex de origem independente validada>
+SOURCE=https://github.com/gitleaks/gitleaks/releases/download/<versao>/<asset>
+DIGEST_SOURCE=<URL/identificador de evidência de digest previamente verificada>
+VERIFIED_BY=<identificador do responsável>
+~~~
+
+O wrapper valida campos, formato, permissão e namespace oficial de `SOURCE`, isola uma cópia do binário num diretório privado, calcula o digest da cópia e compara ao manifesto **antes de executar** `version`, `--help` ou qualquer scan. Ausência, symlink, digest divergente ou scanner ausente interrompem. Nenhum digest é inferido/calculado a partir do executável e aceito como fonte esperada durante a auditoria. **O texto de SOURCE e a declaração VERIFIED_BY não são assinatura criptográfica**: a confiança no manifesto depende da revisão independente anterior (ex.: checksum de release assinado/pacote de proveniência autenticada, conforme disponível). Um manifesto falso também pode declarar um hash falso: não chamar isto autenticação automática de upstream.
+
+### QA e gates subsequentes
+
+A suíte offline usa binário **test-double** e manifesto de fixture explicitamente sintéticos, somente para testar a ordem de execução, hash divergente, manifesto não confiável, scanner ausente, saída não zero e estados negativos de Git LFS/forks/refs ocultas/superfícies externas. Testes com double não provam regras, parser, autenticidade ou assinaturas reais. Se houver Gitleaks real com release e digest verificados, **antes de auditar o repositório privado**, provar com fixture somente sintética: marcador reconhecido pelo detector, marcador em resolução merge-only com `-m` e controle negativo. Sem detector verificado, registrar `NOT_RUN`.
+
+`PUB-01` permanece BLOCKER até scanner real/objetos/refs/superfícies/humano. `PUB-02` licença e titularidade, `PUB-03` CI Issue #4, `PUB-04` proteção de main, `PUB-05` integridade das dependências, `PUB-06` canal confidencial e `PUB-07` integração autorizada seguem pendentes. Nenhuma alteração de licença, visibilidade, proteção privilegiada ou merge foi autorizada. **PREPUBLIC_GATE=FAIL.**
