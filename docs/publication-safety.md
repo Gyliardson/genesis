@@ -4,7 +4,7 @@
 
 ## Gate antes de mudar visibilidade
 
-1. Inventariar todas as refs, commits alcançáveis e objetos sensíveis; executar scanner confiável no **histórico completo** (por exemplo, `gitleaks git --log-opts="--all" .` em clone autorizado, validando sintaxe/versão da ferramenta), revisar achados redigidos e rodar revisão humana. Cobrir também Issues, PRs, comentários, reviews, anexos, Checks/annotations, Actions/logs e artefatos, inclusive referências fora do Git. Se alguma superfície não for auditável, classificar **UNVERIFIED**, não PASS.
+1. Inventariar todas as refs, commits alcançáveis e objetos sensíveis; executar scanner confiável no **histórico completo** (por exemplo, `gitleaks git --log-opts="--all --full-history -m" .` em clone autorizado, validando sintaxe/versão da ferramenta), revisar achados redigidos e rodar revisão humana. Cobrir também Issues, PRs, comentários, reviews, anexos, Checks/annotations, Actions/logs e artefatos, inclusive referências fora do Git. Se alguma superfície não for auditável, classificar **UNVERIFIED**, não PASS.
 2. Corrigir **antes** da publicação qualquer exposição sensível. Para segredo válido: bloquear divulgação, identificar titulares e rotacionar/revogar pelo processo autorizado; avaliar necessidade de tratamento de histórico com autorização separada. Não reproduzir o segredo em Issue, PR ou log.
 3. Decidir expressamente licença, copyright/atribuições, direitos sobre contribuições e sobre dados/artefatos. **Apache-2.0 é apenas proposta para o código.** Até decisão, manter `LicenseRef-Proprietary`, ausência de `LICENSE` e terminologia que não prometa open source.
 4. Validar CI de forks: eventos `pull_request` não privilegiados, `permissions: contents: read`, actions pinadas por SHA, checkout sem persistência de credenciais, timeout/concurrency e custos proporcionais. Diagnosticar separadamente a falha preexistente da [Issue #4](https://github.com/Gyliardson/genesis/issues/4). Não usar `pull_request_target` para executar código de PR externo; não entregar segredos ou runners privilegiados a forks.
@@ -32,7 +32,7 @@ umask 077
 bash scripts/audit-public-readiness.sh 'https://github.com/Gyliardson/genesis.git' "$HOME/genesis-private-audit-$(date +%Y%m%d)"
 ```
 
-O script registra versão e hash binário do scanner, `refs`, quantidade de commits, lista de objetos alcançáveis, `git fsck` e Gitleaks com `--all --full-history`. Captura as refs remotas de branches/tags e tenta `refs/pull/*/{head,merge}`. Não há allowlists ou baselines para suprimir resultados; saída e relatórios ficam **privados**. Código de saída diferente de zero interrompe o gate, inclusive achado confirmado ou erro de ferramenta. Triar falsos positivos separadamente sem copiar segredos em GitHub.
+O script registra versão e hash binário do scanner, `refs`, quantidade de commits, lista de objetos alcançáveis, `git fsck` e Gitleaks com `--all --full-history -m` (patches de todos os parents dos merges). Captura as refs remotas de branches/tags e tenta `refs/pull/*/{head,merge}`. O wrapper zera `GITLEAKS_CONFIG`/`GITLEAKS_CONFIG_TOML`, usa regras embutidas no binário registrado, ignore vazio, `--ignore-gitleaks-allow` e nenhum baseline. **Regras embutidas podem conter allowlists**: não alegar ausência absoluta de supressão. `gitleaks version` e SHA-256 do executável ficam em diretório privado; verificação de autenticidade/proveniência exige fonte confiável independente. Saída e relatórios ficam privados. Código de saída diferente de zero interrompe o gate, inclusive achado confirmado ou erro de ferramenta. Triar falsos positivos separadamente sem copiar segredos em GitHub.
 
 **Cobertura negativa e limites:** scan de patch Git não verifica semanticamente toda propriedade/dado pessoal, blobs inacessíveis ao servidor, objetos dangling não anunciados, refs ocultas/não baixadas, arquivos Git LFS não obtidos, dados de forks independentes, caches, snapshots de terceiros nem conteúdo de Issues/PR/Actions. `git fsck` em clone verifica somente o conjunto de objetos efetivamente transferidos. Registrar SHA/refs e eventuais falhas de fetch; não chamar varredura completa sem revisão dessas lacunas.
 
@@ -40,19 +40,41 @@ O script registra versão e hash binário do scanner, `refs`, quantidade de comm
 
 Exige GitHub CLI autenticada com escopo de **leitura** e acesso a cada superfície. Nunca anexar dumps brutos à Issue/PR:
 
-```bash
+~~~bash
+# Execute somente em máquina autorizada; não em terminal/transcript compartilhado.
+set -Eeuo pipefail
 umask 077
-mkdir -m 700 -p "$HOME/genesis-audit-surfaces"
-cd "$HOME/genesis-audit-surfaces"
-gh auth status
-gh api --paginate 'repos/Gyliardson/genesis/issues?state=all&per_page=100' > issues.private.json
-gh api --paginate 'repos/Gyliardson/genesis/issues/comments?per_page=100' > issue-comments.private.json
-gh api --paginate 'repos/Gyliardson/genesis/pulls?state=all&per_page=100' > pulls.private.json
-gh api --paginate 'repos/Gyliardson/genesis/pulls/comments?per_page=100' > inline-review-comments.private.json
-gh api --paginate 'repos/Gyliardson/genesis/actions/runs?per_page=100' > actions-runs.private.json
-```
+private_dir="$HOME/genesis-audit-surfaces-$(date +%Y%m%d)"
+if [ -e "$private_dir" ] || [ -L "$private_dir" ]; then
+  echo 'Destino já existe; não sobrescrever auditoria.' >&2
+  exit 73
+fi
+mkdir -m 700 -- "$private_dir"
+capture_private() {
+  local label="$1"; shift
+  case "$label" in ''|*[!A-Za-z0-9_.-]*) return 64 ;; esac
+  : > "$private_dir/$label.stdout.private"
+  : > "$private_dir/$label.stderr.private"
+  if ! "$@" > "$private_dir/$label.stdout.private" 2> "$private_dir/$label.stderr.private"; then
+    printf 'FAILED %s\n' "$label" >> "$private_dir/failures.private"
+    return 1
+  fi
+}
+capture_private auth gh auth status
+capture_private issues gh api --paginate 'repos/Gyliardson/genesis/issues?state=all&per_page=100'
+capture_private issue-comments gh api --paginate 'repos/Gyliardson/genesis/issues/comments?per_page=100'
+capture_private pulls gh api --paginate 'repos/Gyliardson/genesis/pulls?state=all&per_page=100'
+capture_private review-comments gh api --paginate 'repos/Gyliardson/genesis/pulls/comments?per_page=100'
+capture_private runs gh api --paginate 'repos/Gyliardson/genesis/actions/runs?per_page=100'
+# Para cada RUN_ID/CHECK_ID numérico descoberto nas listas privadas:
+# RUN_ID=...; CHECK_ID=...
+# capture_private "run-$RUN_ID-logs" gh run view "$RUN_ID" --log
+# capture_private "check-$CHECK_ID-annotations" gh api --paginate \
+#   "repos/Gyliardson/genesis/check-runs/$CHECK_ID/annotations"
+# NUNCA execute gh run view sem captura.
+~~~
 
-Para cada PR enumerado, coletar separadamente `gh api repos/Gyliardson/genesis/pulls/NUM/reviews` e `gh api repos/Gyliardson/genesis/issues/NUM/comments`; para cada run enumerado, `gh api repos/Gyliardson/genesis/actions/runs/ID/jobs`, `gh run view ID --log` (somente arquivo privado) e `gh api repos/Gyliardson/genesis/actions/runs/ID/artifacts`; para cada check-run obtido por `gh api repos/Gyliardson/genesis/commits/SHA/check-runs`, consultar `gh api repos/Gyliardson/genesis/check-runs/CHECK_ID/annotations`. Enumerar pages e preservar status HTTP: **404/403, steps ausentes ou 0 artifacts não significam PASS**. Revisar links `user-attachments`/uploads, imagens, Markdown, releases/tags, Discussions, caches, LFS, URLs externas e referências a forks/manual screenshots sob acesso autorizado. Guardar textos, logs e anexos em diretório 0700 e revisá-los com detector de padrões **e** julgamento humano; dados de terceiros e dados pessoais exigem análise semântica e de direitos. Nenhum desses dumps foi obtido por este procedimento apenas por estar documentado.
+Para cada PR enumerado, coletar separadamente `gh api repos/Gyliardson/genesis/pulls/NUM/reviews` e `gh api repos/Gyliardson/genesis/issues/NUM/comments`; para cada run enumerado, `gh api repos/Gyliardson/genesis/actions/runs/ID/jobs`, `capture_private "run-$RUN_ID-logs" gh run view "$RUN_ID" --log` após validar RUN_ID numérico e `gh api repos/Gyliardson/genesis/actions/runs/ID/artifacts`; para cada check-run obtido por `gh api repos/Gyliardson/genesis/commits/SHA/check-runs`, usar `capture_private "check-$CHECK_ID-annotations" gh api --paginate "repos/Gyliardson/genesis/check-runs/$CHECK_ID/annotations"` após validar CHECK_ID numérico. Enumerar pages e preservar status HTTP: **404/403, steps ausentes ou 0 artifacts não significam PASS**. Revisar links `user-attachments`/uploads, imagens, Markdown, releases/tags, Discussions, caches, LFS, URLs externas e referências a forks/manual screenshots sob acesso autorizado. Guardar textos, logs e anexos em diretório 0700 e revisá-los com detector de padrões **e** julgamento humano; dados de terceiros e dados pessoais exigem análise semântica e de direitos. Nenhum desses dumps foi obtido por este procedimento apenas por estar documentado.
 
 Registrar privadamente: data, responsável, scanner/versão/hash, refs e SHAs, contagens esperadas vs obtidas, falhas API, superfícies incluídas/excluídas, falsos positivos redigidos, cobertura manual, owners de remediação. Em checkpoint GitHub, publicar **somente estados, contagens e limites**, jamais o material encontrado. Um segredo válido impõe STOP, rotação/revogação autorizada e avaliação separada do histórico; reescrita é proibida nesta missão.
 
@@ -84,3 +106,29 @@ Checar que `protected=true` e que regras **efetivamente aplicáveis** à ref `ma
 | PUB-08 | NOTE — protocolo científico prospectivo preservado | ambiente efetivo e experimento futuro |
 
 **PREPUBLIC_GATE=FAIL.** Nenhuma evidência histórica, jurídica, de CI, canal confidencial ou proteção pode ser considerada PASS com base apenas nesta documentação.
+
+
+## PUBLIC-REVIEW-02 — controles e lacunas de execução (R02-01–06)
+
+| Finding | Correção | Limite / gate |
+| --- | --- | --- |
+| R02-01 | `git log -p -m --all --full-history` produz patches de merge por parent; teste com segredo **sintético** em resolução de conflito, além de caso negativo | Eficácia das regras de **Gitleaks real** NOT_RUN, confirmar usando binário verificado antes de aceitar PUB-01 |
+| R02-02 | `capture_private` coleta stdout **e** stderr (logs de runs, annotations, API) em arquivos 0600 sob diretório 0700 (`umask 077`); comando que falha interrompe sem despejar dados | Para cada job/run/check e paginação, falta coleta real, triagem humana e revisão de 403/404; preservar arquivos somente em estação autorizada e eliminar cópias conforme retenção aprovada |
+| R02-03 | URL HTTPS com userinfo/credencial e SSH com password recusados antes de clone, sem eco; SSH agent (`git@...`/`ssh://git@...`) e HTTPS com credential helper externo permitidos | Não inspeciona histórico do shell/segurança do credential helper; nunca usar segredo em argumento |
+| R02-04 | Scanner: binário/versão/hash e flags/help, `GITLEAKS_CONFIG` e `GITLEAKS_CONFIG_TOML` zerados, regras embutidas, ignore explícito vazio, `--ignore-gitleaks-allow`, sem baseline | **Allowlists embutidas nas regras não são removidas**; examinar configuração efetiva e proveniência do release/autenticidade; hashes locais isoladamente não bastam |
+| R02-05 | Help capturado em arquivo, teste de flags sem `grep -q` alimentado por pipe: elimina falso negativo por SIGPIPE/`pipefail` | Versão que não suporta flags requeridas falha com 65; não relaxar |
+| R02-06 | `ls-remote --refs` antes/depois versus refs locais do mirror/fetch PR, verificação de objeto, `git fsck --unreachable` e marcação de refs não reconhecidas | Ref remota pode expirar; objetos não anunciados/inacessíveis, LFS remoto, forks, refs ocultas e superfícies GitHub ficam UNVERIFIED |
+
+Para executar testes de regressão **sem segredos reais** em checkout do candidato:
+
+~~~bash
+bash -n scripts/audit-public-readiness.sh
+python -m unittest discover -s tests -p 'test_public_audit.py' -v
+command -v gitleaks && gitleaks version   # presença e versão apenas, NÃO é scan
+~~~
+
+O pacote de testes usa explicitamente **test-double Gitleaks**, validando a passagem dos parâmetros, diferenças de merge, erro seguro, não divulgação no terminal e permissões. **Não é uma varredura Gitleaks real**. Antes da auditoria confidencial, verificar versão exata, distribuição oficial/hash ou assinatura confiável, regras/allowlists e testar o **binário verdadeiro** contra fixtures sintéticas positivas e negativas. Se o scanner real não encontrar a fixture merge-only, `PUB-01=FAIL`. Versão/hash são registrados pelo wrapper, mas por si não demonstram autenticidade.
+
+A execução real deve usar clone privado autenticado, identificar divergências refs/objetos, revisar Git LFS (incluindo objetos efetivamente baixados), forks independentes, refs efêmeras, logs e annotations. `git fsck` apenas vê objetos transferidos; zero findings em patches não equivale a zero segredos, nem é clearance de privacidade ou licenciamento.
+
+**PUB-05:** manter plano de lock/hashes em `docs/reproducibility.md` — não foi criado lock testado. **PUB-06:** manter `SECURITY.md` — nenhum canal confidencial operacional foi comprovado. `LICENSE` permanece ausente e `LicenseRef-Proprietary` inalterado; a investigação de CI é da Issue #4. **PREPUBLIC_GATE=FAIL**.
