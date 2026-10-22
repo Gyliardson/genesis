@@ -1,7 +1,6 @@
 """Offline deterministic security regressions for the public-readiness audit wrapper."""
 import os
 from pathlib import Path
-import shutil
 import stat
 import subprocess
 import tempfile
