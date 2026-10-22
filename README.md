@@ -65,3 +65,11 @@ A estrutura inicial será pequena; não há motivo para introduzir uma API web, 
 4. Registre revisões de arquitetura como propostas, nunca como fatos já comprovados.
 
 **Aviso:** GENESIS é um estudo de sistemas adaptativos. Não alega criar consciência artificial, emular cérebros biológicos ou produzir políticas superiores antes dos experimentos.
+
+## Contribuições, segurança e reprodução
+
+O projeto está em **fase de pesquisa**: o scaffold Python existe, mas simulação, treinamento e ganhos de performance ainda não foram validados. Antes de contribuir, consulte [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md) e o [protocolo mínimo de reprodutibilidade](docs/reproducibility.md).
+
+**Licenciamento:** a decisão de licença pública ainda não foi tomada. Atualmente, o metadata de `pyproject.toml` declara `LicenseRef-Proprietary` e não existe arquivo `LICENSE`. Ter acesso ao código, inclusive após eventual publicação do repositório, **não concede por si só direitos de reutilização, redistribuição ou contribuição sob uma licença open source**. Apache-2.0 é apenas uma opção em análise; será necessária decisão explícita, checagem de titularidade/atribuições e atualização coerente do metadata antes de apresentar o código como open source. Direitos sobre dados, traces e resultados de terceiros devem ser verificados separadamente.
+
+A [política de preparação de divulgação](docs/publication-safety.md) separa revisão de segurança, regras de branch, aprovação operacional e mudança efetiva de visibilidade.
