@@ -80,6 +80,16 @@ sys.exit(0)
         self.assertNotIn('PRIVATE_SCANNER_OUTPUT_DO_NOT_STREAM', result.stdout + result.stderr)
         self.assertEqual(stat.S_IMODE((self.root/'out').stat().st_mode), 0o700)
         self.assertEqual(stat.S_IMODE((self.root/'out/gitleaks.stdout.private.txt').stat().st_mode), 0o600)
+        # Todos os artefatos privados (inclusive relatorios e status) sao
+        # precriados em 0600, nao apenas stdout. Nao relaxar para 0646/0666.
+        private_files = [p for p in (self.root/'out').iterdir()
+                         if '.private.' in p.name]
+        self.assertGreaterEqual(len(private_files), 30)
+        for p in private_files:
+            with self.subTest(path=p.name):
+                self.assertTrue(p.is_file())
+                self.assertEqual(stat.S_IMODE(p.stat().st_mode), 0o600)
+
         self.assertIn('PRIVATE_SCANNER_OUTPUT_DO_NOT_STREAM', (self.root/'out/gitleaks.stdout.private.txt').read_text())
         self.assertEqual((self.root/'out/gitleaks-exit-code.private.txt').read_text().strip(), '0')
         self.assertIn('GIT_LFS=UNVERIFIED', (self.root/'out/coverage-gaps.private.txt').read_text())

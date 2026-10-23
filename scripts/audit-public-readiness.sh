@@ -35,13 +35,77 @@ esac
 if [ -e "$out" ] || [ -L "$out" ]; then
   echo 'Diretório de auditoria já existe; evidências não serão sobrescritas.' >&2; exit 73
 fi
-for bin in git sha256sum; do
+for bin in git sha256sum python3; do
   command -v "$bin" >/dev/null || { echo "Ferramenta ausente: $bin" >&2; exit 69; }
 done
 mkdir -m 700 -- "$out"
 chmod 700 -- "$out"
 out=$(cd -- "$out" && pwd -P)
 mirror="$out/mirror.git"
+
+# Em certos ambientes (incluindo Codespaces), a criacao por redirecionamento
+# Bash ignorou umask 077. Criar arquivos VAZIOS com mode 0600 e verificar
+# ANTES de qualquer gravacao sensivel; redirecionamentos posteriores truncam
+# arquivos existentes sem alterar a permissao. Ambiente e diretório exclusivos.
+python3 - "$out" <<'PY_PRIVFILE'
+import os
+import stat
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+names = (
+    'audit-exit-code.private.txt',
+    'clone.stderr.private.txt',
+    'clone.stdout.private.txt',
+    'coverage-gaps.private.txt',
+    'empty-ignore.private.txt',
+    'fetch.stderr.private.txt',
+    'fetch.stdout.private.txt',
+    'fsck.private.txt',
+    'fsck.stderr.private.txt',
+    'git-version.private.txt',
+    'git-version.stderr.private.txt',
+    'gitleaks-binary.sha256.private.txt',
+    'gitleaks-exit-code.private.txt',
+    'gitleaks-help.private.txt',
+    'gitleaks-help.stderr.private.txt',
+    'gitleaks-root-help.private.txt',
+    'gitleaks-root-help.stderr.private.txt',
+    'gitleaks-verified-digest.private.txt',
+    'gitleaks-version.private.txt',
+    'gitleaks-version.stderr.private.txt',
+    'gitleaks.redacted.private.json',
+    'gitleaks.stderr.private.txt',
+    'gitleaks.stdout.private.txt',
+    'hash.stderr.private.txt',
+    'local.private.tsv',
+    'objects.stderr.private.txt',
+    'provenance.private.txt',
+    'reachable-commit-count.private.txt',
+    'reachable-objects.private.txt',
+    'refs.stderr.private.txt',
+    'remote-after.private.tsv',
+    'remote-after.stderr.private.txt',
+    'remote-before.private.tsv',
+    'remote-before.stderr.private.txt',
+    'revlist.stderr.private.txt',
+    'scanner-source.private.txt',
+    'status.private.env',
+)
+try:
+    for name in names:
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+        fd = os.open(root / name, flags, 0o600)
+        try:
+            if stat.S_IMODE(os.fstat(fd).st_mode) != 0o600:
+                raise RuntimeError("private output mode mismatch")
+        finally:
+            os.close(fd)
+except (OSError, RuntimeError):
+    raise SystemExit("PRIVATE_OUTPUT_PRECREATE_FAILED")
+PY_PRIVFILE
+
 
 # Estados machine-readable são sempre bloqueantes para publicação.
 scan_status=NOT_RUN

@@ -134,6 +134,23 @@ A execução real deve usar clone privado autenticado, identificar divergências
 **PUB-05:** manter plano de lock/hashes em `docs/reproducibility.md` — não foi criado lock testado. **PUB-06:** manter `SECURITY.md` — nenhum canal confidencial operacional foi comprovado. `LICENSE` permanece ausente e `LicenseRef-Proprietary` inalterado; a investigação de CI é da Issue #4. **PREPUBLIC_GATE=FAIL**.
 
 
+## Privacidade dos arquivos de auditoria em Codespaces
+
+Em um Codespace, os testes sintéticos observaram arquivos Bash criados por
+redirecionamento com permissões `0646` ou `0666`, mesmo após `umask 077`.
+A criação com Python `os.open(..., mode=0600)` produziu `0600` e redirecionar
+para esses arquivos **já existentes** preservou `0600` tanto em `/tmp` como
+em `/workspaces/genesis`. Isso não identifica a causa ambiental.
+
+Por segurança, o wrapper exige agora **Python 3** e pré-cria todos os arquivos
+privados conhecidos, inclusive stdout/stderr, relatório do scanner, refs,
+manifestos de resultados e status, com criação exclusiva e verificação
+`fstat=0600`, **antes da primeira gravação sensível**. Se a pré-criação falha,
+a auditoria interrompe sem varrer o repositório. A criação dos arquivos vazios
+ocorre exclusivamente no diretório novo `0700`. O mesmo usuário/host
+continua sendo uma fronteira de confiança; Gitleaks real e auditoria privada
+permanecem `NOT_RUN` até prova operacional.
+
 ## R03-01/R03-02 — status explícito e procedência pré-execução
 
 **SCAN_PASS != AUDIT_PASS != PREPUBLIC_GATE=PASS.** O wrapper não autoriza publicação e **nunca retorna exit code 0**. Um scanner que retorna 0 significa somente patches alcançáveis sem finding naquele detector. O wrapper retorna **66** quando os demais gates seguem pendentes. Finding do scanner (1), trust/digest inválido (67), scanner ausente (69) e erros internos também interrompem. Não usar `set +e`, `|| true` nem ignorar o exit code.
