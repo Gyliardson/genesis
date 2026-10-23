@@ -23,9 +23,50 @@ ser confirmado na Issue #23 e no HEAD do PR #24. **PUB-02=PARTIAL**;
 1. Inventariar todas as refs, commits alcançáveis e objetos sensíveis; executar scanner previamente autenticado e validado pelo wrapper sobre todos os patches alcançáveis (inclusive merges com `-m`) em clone autorizado, sem confundir cobertura de patches com histórico/superfícies completos, revisar achados redigidos e rodar revisão humana. Cobrir também Issues, PRs, comentários, reviews, anexos, Checks/annotations, Actions/logs e artefatos, inclusive referências fora do Git. Se alguma superfície não for auditável, classificar **UNVERIFIED**, não PASS.
 2. Corrigir **antes** da publicação qualquer exposição sensível. Para segredo válido: bloquear divulgação, identificar titulares e rotacionar/revogar pelo processo autorizado; avaliar necessidade de tratamento de histórico com autorização separada. Não reproduzir o segredo em Issue, PR ou log.
 3. **Licença de código decidida:** Apache-2.0 aprovada pelo operador em 23/10/2026 e preparada no PR #24. Antes de publicar, revisar e comprovar copyright/atribuições, direitos de redistribuição sobre materiais incorporados e a necessidade de `NOTICE`; avaliar separadamente direitos de contribuições e de dados/artefatos. Não confundir licença escolhida com titularidade já verificada.
-4. Validar CI de forks: eventos `pull_request` não privilegiados, `permissions: contents: read`, actions pinadas por SHA, checkout sem persistência de credenciais, timeout/concurrency e custos proporcionais. Diagnosticar separadamente a falha preexistente da [Issue #4](https://github.com/Gyliardson/genesis/issues/4). Não usar `pull_request_target` para executar código de PR externo; não entregar segredos ou runners privilegiados a forks.
+4. **Revisar estaticamente os controles de CI de forks antes da exposição:** evento `pull_request` não privilegiado, `permissions: contents: read`, actions pinadas por SHA, checkout sem persistência de credenciais, timeout/concurrency e custos proporcionais. A execução hospedada privada está bloqueada por falta de minutos conforme [Issue #4](https://github.com/Gyliardson/genesis/issues/4); o teste real de CI deve ocorrer na fase B descrita abaixo, nunca ser declarado PASS antecipadamente. Não usar `pull_request_target` para executar código de PR externo; não entregar segredos ou runners privilegiados a forks.
 5. Obter revisão técnica **independente no exato HEAD** do candidato, incluindo segurança do histórico e da infraestrutura, licenças, integridade de dependências e comunicação científica. Testes, review e autorização de merge são gates diferentes.
 6. Deliberar mudanças operacionais pendentes. Merge em `main` exige autorização específica do operador para PR/HEAD, além das proteções reais. Mudança de visibilidade exige autorização **separada** e `PREPUBLIC_GATE=PASS` verificável.
+
+### Gating em duas fases quando os minutos do runner privado estão esgotados
+
+**Restrição confirmada pelo operador em 23/10/2026:** a conta não dispõe de
+minutos de GitHub-hosted Actions para este repositório enquanto estiver
+privado. A exigência de **CI hospedada PASS antes de abrir** criaria uma
+dependência circular; registrar `PRIVATE_HOSTED_CI=BLOCKED_RESOURCE`,
+e não reinterpretar seus jobs de início negado como falhas do código.
+
+**Fase A — antes de expor o repositório (obrigatória):** executar checks
+locais isolados, scanner verificado em refs alcançáveis, inventário das
+superfícies e logs disponíveis, triagem humana de histórico/atribuições e
+revisão técnica independente no exato HEAD. Classificar cada superfície
+inacessível como `UNVERIFIED` e decidir riscos residuais explicitamente,
+sem presumir que um scan negativo em patches libere dados externos.
+Resolver os bloqueios não dependentes do runner antes de solicitar
+autorização específica de merge do PR #24 em `main` e **autorização
+separada** para a mudança de visibilidade. Não expor segredos em logs,
+Issues, PRs ou evidências públicas.
+
+**Fase B — após conversão autorizada (verificação operacional):**
+sem anunciar conclusão, configurar/verificar proteção efetiva de `main`
+e habilitar/verificar Private Vulnerability Reporting quando disponível.
+Usar `Actions > CI > Run workflow` na branch `main` (`workflow_dispatch`
+somente quando este workflow estiver efetivamente integrado à branch
+padrão), e confirmar run/job/steps **realmente executados** em
+`ubuntu-24.04`, Python 3.11, Ruff e Pytest no SHA correto. O botão não
+equivale a execução nem garante PASS; se não houver runner ou algum teste
+falhar, manter `PUBLIC_CI=FAIL/BLOCKED`, suspender anúncio e reavaliar.
+Nunca disparar código de fork com privilégios para compensar a cota.
+Antes de exigir um check em branch protection, confirmar que ele
+efetivamente executa e passa. Reproduzir e validar lock/hashes de
+dependências em Python 3.11 conforme `PUB-05`; se não estiver pronto,
+o respectivo gate permanece aberto e não deve ser declarado integralmente
+reprodutível.
+
+**Janela de exposição:** mudar a visibilidade torna imediatamente
+acessíveis histórico e superfícies públicas do repositório; um rollback
+não apaga cópias externas. A fase B não serve para descobrir segredos que
+deveriam ter sido tratados na fase A. Aprovações de merge e visibilidade
+não decorrem de "continuar" ou do resultado de testes locais.
 
 ## Janela operacional da conversão
 
@@ -150,7 +191,7 @@ Checar que `protected=true` e que regras **efetivamente aplicáveis** à ref `ma
 | --- | --- | --- |
 | PUB-01 | PARTIAL — roteiro Git, API e revisão humana especificados | scanner real completo, refs/objetos e superfícies fora do Git |
 | PUB-02 | PARTIAL — Apache-2.0 aprovada no PR #24, ainda não integrada em main | verificação de titularidade, atribuições/NOTICE, dados e artefatos |
-| PUB-03 | FAIL — sem alteração de assertions/workflow | causa CI #4, ambiente limpo e exact-head |
+| PUB-03 | BLOCKED_RESOURCE — minutos privados esgotados; checks locais em Python 3.14.2 PASS | CI pública real em Python 3.11 no SHA efetivo após conversão autorizada |
 | PUB-04 | FAIL — configuração e readback documentados, nenhuma regra ativada | proteções efetivas de main |
 | PUB-05 | OPEN — estratégia causal em docs/reproducibility.md | lock/hashes resolvidos e validação |
 | PUB-06 | OPEN — fallback público não tratado como confidencial | canal privado confirmado e teste |

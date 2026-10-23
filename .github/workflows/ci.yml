@@ -2,6 +2,9 @@ name: CI
 
 # pull_request (not pull_request_target) keeps code from forks on the unprivileged path.
 on:
+  # Allows a first trusted CI run after authorized private-to-public conversion.
+  # Visibility conversion alone does not emit push/pull_request events.
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
