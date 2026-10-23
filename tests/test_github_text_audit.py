@@ -6,7 +6,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "audit-github-text-surfaces.py"
 spec = importlib.util.spec_from_file_location("genesis_gh_text_audit", SCRIPT)
 audit = importlib.util.module_from_spec(spec)
