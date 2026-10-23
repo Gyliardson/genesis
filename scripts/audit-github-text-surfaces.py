@@ -110,9 +110,31 @@ def scan_records(root, records, name, scanner_env):
             result = subprocess.run(command, cwd=root, env=scanner_env, stdout=output, stderr=errors, timeout=180)
         except (OSError, subprocess.TimeoutExpired):
             raise AuditError("scanner execution failed") from None
-    for path in (ignore, report, stdout, stderr):
-        if stat.S_IMODE(path.stat().st_mode) != 0o600:
-            raise AuditError("scanner output permissions invalid")
+    # Native scanner report writers may replace/chmod their report even when
+    # the initial placeholder was created as 0600. Do not trust final mode.
+    # The report always stays inside root mode 0700: no outside-user exposure
+    # while the scanner is running. Normalize on the file descriptor after it
+    # exits; verify regular file, owner, link count and final 0600.
+    if root.is_symlink() or stat.S_IMODE(root.stat().st_mode) != 0o700:
+        raise AuditError("private scanner directory permissions invalid")
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(report, flags)
+    try:
+        details = os.fstat(fd)
+        if not stat.S_ISREG(details.st_mode) or details.st_uid != os.geteuid() or details.st_nlink != 1:
+            raise AuditError("scanner report identity invalid")
+        if stat.S_IMODE(details.st_mode) != 0o600:
+            # On Codespaces, new file creation may ignore expected umask.
+            # Read-only fd supports fchmod; do not chmod a pathname/symlink.
+            os.fchmod(fd, 0o600)
+        if stat.S_IMODE(os.fstat(fd).st_mode) != 0o600:
+            raise AuditError("scanner report private mode invalid")
+    finally:
+        os.close(fd)
+    for label, path in (("ignore", ignore), ("report", report),
+                        ("stdout", stdout), ("stderr", stderr)):
+        if path.is_symlink() or not path.is_file() or stat.S_IMODE(path.stat().st_mode) != 0o600:
+            raise AuditError(f"scanner output permissions invalid: {label}")
     try:
         raw = report.read_text(encoding="utf-8")
         findings = json.loads(raw) if raw.strip() else []

@@ -56,6 +56,17 @@ python scripts/audit-github-text-surfaces.py --live
 títulos/corpos e texto de comentários/reviews com Gitleaks v8.30.1 validado
 por SHA256; os resultados e corpos permanecem em pasta nova `0700` no
 `$HOME` (arquivos `0600`). Resumos exibem somente contagens e estados.
+Durante a execução do Gitleaks real no Codespace, o arquivo de relatório
+pode ser recriado com permissões diferentes de `0600`, mesmo se o placeholder
+foi pré-criado. O coletor valida que o diretório privado do scanner é `0700`
+e, ao terminar o processo, abre o relatório sem seguir symlinks, verifica
+regular file, owner e link count, aplica `fchmod(0600)` via file descriptor
+quando necessário e verifica novamente todos os artefatos. Não enfraquece
+o teste de modo final; durante a escrita, a confidencialidade contra outros
+usuários depende do diretório `0700`. O processo com o mesmo UID permanece
+na mesma trust boundary. A hipótese de criação/recriação do arquivo ainda
+requer validação operacional no Codespace.
+
 O scanner não valida direitos autorais, PII nem a segurança semântica dos
 conteúdos; anexos são apenas contados aproximadamente por links e não baixados.
 Histórico de edições de comentários, timelines, Actions/logs/annotations,
