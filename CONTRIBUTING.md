@@ -16,6 +16,6 @@ Uma policy deve escolher somente ações legalmente permitidas pelo ambiente, se
 
 ## Licença e direitos
 
-**Não há licença open source aprovada nesta fase.** O projeto está marcado `LicenseRef-Proprietary` e não possui `LICENSE`. Antes de aceitar contribuições distribuíveis, o mantenedor deverá definir licença, titularidade e condições de entrada de contribuições. Não adicione material de terceiros sem direitos de redistribuição comprovados; licenças de dados e artefatos requerem avaliação própria. A submissão de um PR não altera automaticamente o status jurídico do repositório.
+O mantenedor aprovou **Apache-2.0 para o código**; consulte [LICENSE](LICENSE). Antes de enviar uma contribuição destinada à incorporação ao projeto, confirme que você possui direitos para licenciá-la sob esses termos e declare claramente eventuais atribuições, materiais de terceiros ou condições distintas. Não adicione material de terceiros sem direitos de redistribuição comprovados; licenças de dados e artefatos científicos requerem avaliação própria. **O repositório permanece privado enquanto os gates de preparação pública não forem concluídos.**
 
 Revisão técnica, checks verdes e discussão pública não autorizam merge em `main`; o mantenedor decide cada integração.
