@@ -124,7 +124,10 @@ def scan_records(root, records, name, scanner_env):
         return "PASS", 0, findings
     if result.returncode == 1 and findings:
         return "FINDINGS", len(findings), findings
-    raise AuditError("scanner/report disagreement")
+    raise AuditError(
+        f"scanner/report mismatch (exit={result.returncode}, "
+        f"findings={len(findings)}, fixture={name})"
+    )
 
 
 def write_records(root, records):
@@ -186,12 +189,17 @@ def selftest(root, scanner_env):
     fake = "ghp_" + "".join(secrets.choice(alphabet) for _ in range(36))
     pos, _, _ = write_records(root / "positive", [("synthetic", {"id": 1, "body": "token=" + fake}, ("body",))])
     neg, _, _ = write_records(root / "negative", [("synthetic", {"id": 2, "body": "ordinary clean content"}, ("body",))])
+    print("GITHUB_TEXT_SELFTEST_STAGE=positive", flush=True)
     state1, count1, findings = scan_records(root / "positive", pos, "test-positive", scanner_env)
-    state0, count0, _ = scan_records(root / "negative", neg, "test-negative", scanner_env)
     if state1 != "FINDINGS" or count1 < 1 or not any(f.get("RuleID") == "github-pat" for f in findings):
-        raise AuditError("synthetic positive failed")
+        raise AuditError("synthetic positive validation failed")
+    print("GITHUB_TEXT_SELFTEST_POSITIVE=PASS", flush=True)
+
+    print("GITHUB_TEXT_SELFTEST_STAGE=negative", flush=True)
+    state0, count0, _ = scan_records(root / "negative", neg, "test-negative", scanner_env)
     if state0 != "PASS" or count0 != 0:
-        raise AuditError("synthetic negative failed")
+        raise AuditError("synthetic negative validation failed")
+    print("GITHUB_TEXT_SELFTEST_NEGATIVE=PASS", flush=True)
     print("GITHUB_TEXT_AUDIT_SELFTEST=PASS")
 
 
@@ -201,8 +209,11 @@ def main():
         print("Usage: python scripts/audit-github-text-surfaces.py --selftest | --live")
         return 64
     try:
+        if mode == ["--selftest"]:
+            print("GITHUB_TEXT_SELFTEST_STAGE=scanner_preflight", flush=True)
         scanner_env = verify_scanner()
         if mode == ["--selftest"]:
+            print("GITHUB_TEXT_SELFTEST_SCANNER=PASS", flush=True)
             with tempfile.TemporaryDirectory(prefix="genesis-gh-text-fixture-") as path:
                 root = Path(path)
                 private_dir(root / "positive")
@@ -243,8 +254,16 @@ def main():
         print("PREPUBLIC_GATE=FAIL")
         print("PRIVATE_EVIDENCE_PRESERVED=YES")
         return 66 if state == "PASS" else 1
-    except (AuditError, OSError, ValueError, TypeError, KeyError):
+    except AuditError as exc:
+        # Error strings above are fixed or numerical diagnostics only; never
+        # include source record contents, API stderr or detector stdout.
         print("GITHUB_TEXT_AUDIT=INCOMPLETE")
+        print(f"SAFE_CAUSE={exc}")
+        print("PREPUBLIC_GATE=FAIL")
+        return 70
+    except (OSError, ValueError, TypeError, KeyError):
+        print("GITHUB_TEXT_AUDIT=INCOMPLETE")
+        print("SAFE_CAUSE=internal_io_or_data_error")
         print("PREPUBLIC_GATE=FAIL")
         return 70
 
