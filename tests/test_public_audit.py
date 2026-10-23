@@ -36,6 +36,11 @@ class AuditTests(unittest.TestCase):
         g.write_text('''#!/usr/bin/env python3
 import os, sys, subprocess
 args = sys.argv[1:]
+# Marker proves actual invocation, even when no stdout is produced.
+marker_path = os.environ.get('GENESIS_FAKE_SCANNER_INVOKED')
+if marker_path:
+    with open(marker_path, 'a', encoding='utf-8') as marker_file:
+        marker_file.write('invoked')
 if args == ['version']:
     print('test-double-0.1'); sys.exit(0)
 if '--help' in args:
@@ -67,16 +72,30 @@ sys.exit(0)
             'VERIFIED_BY=synthetic-fixture\n'
         )
         self.manifest.chmod(0o600)
+        self.execution_marker = self.root / 'scanner-invoked.synthetic'
         self.env = dict(os.environ, PATH=str(self.bin) + os.pathsep + os.environ['PATH'])
+        self.env['GENESIS_FAKE_SCANNER_INVOKED'] = str(self.execution_marker)
 
     def scan(self, source=None, out=None, manifest=None):
         return run('bash', str(SCRIPT), str(source or self.source),
                    str(out or self.root/'out'), str(manifest or self.manifest),
                    check=False, env=self.env)
 
+    def assert_scanner_not_executed(self, out):
+        # Outputs are now pre-created as empty 0600 files before trust checks:
+        # existence is not proof that the detector ran.
+        self.assertFalse(self.execution_marker.exists(),
+                         'untrusted scanner was executed')
+        for name in ('gitleaks-version.private.txt', 'gitleaks-help.private.txt'):
+            artifact = out / name
+            self.assertTrue(artifact.is_file())
+            self.assertEqual(artifact.stat().st_size, 0)
+
     def test_no_finding_and_private_permissions(self):
         result = self.scan()
         self.assertEqual(result.returncode, 66, result.stderr)
+        self.assertTrue(self.execution_marker.is_file(),
+                        'synthetic scanner invocation marker missing')
         self.assertNotIn('PRIVATE_SCANNER_OUTPUT_DO_NOT_STREAM', result.stdout + result.stderr)
         self.assertEqual(stat.S_IMODE((self.root/'out').stat().st_mode), 0o700)
         self.assertEqual(stat.S_IMODE((self.root/'out/gitleaks.stdout.private.txt').stat().st_mode), 0o600)
@@ -156,8 +175,7 @@ sys.exit(0)
         result = self.scan()
         self.assertEqual(result.returncode, 67)
         out = self.root / 'out'
-        self.assertFalse((out / 'gitleaks-version.private.txt').exists())
-        self.assertFalse((out / 'gitleaks-help.private.txt').exists())
+        self.assert_scanner_not_executed(out)
         self.assertIn('SCAN_STATUS=NOT_RUN', (out / 'status.private.env').read_text())
 
     def test_untrusted_provenance_rejected(self):
@@ -167,19 +185,20 @@ sys.exit(0)
             'SOURCE=https://untrusted.invalid/not-an-official-release'))
         result = self.scan()
         self.assertEqual(result.returncode, 67)
-        self.assertFalse((self.root / 'out/gitleaks-version.private.txt').exists())
+        self.assert_scanner_not_executed(self.root / 'out')
 
     def test_missing_scanner_never_executes(self):
         (self.bin / 'gitleaks').unlink()
         result = self.scan()
         self.assertEqual(result.returncode, 69)
-        self.assertFalse((self.root / 'out/gitleaks-version.private.txt').exists())
+        self.assert_scanner_not_executed(self.root / 'out')
         self.assertIn('SCAN_STATUS=NOT_RUN', (self.root / 'out/status.private.env').read_text())
 
     def test_missing_manifest_blocks(self):
         self.manifest.unlink()
         result = self.scan()
         self.assertEqual(result.returncode, 67)
+        self.assert_scanner_not_executed(self.root / 'out')
         self.assertIn('PREPUBLIC_GATE=FAIL', (self.root / 'out/status.private.env').read_text())
 
     def test_clean_scan_is_not_prepublic_pass(self):
