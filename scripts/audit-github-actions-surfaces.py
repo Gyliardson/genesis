@@ -158,10 +158,14 @@ def gather(root, env):
 
 def selftest():
     env = base.verify_scanner()
+    import secrets
+    import string
+    alphabet = string.ascii_letters + string.digits
+    fake_token = "ghp_" + "".join(secrets.choice(alphabet) for _ in range(36))
     with tempfile.TemporaryDirectory(prefix="genesis-actions-audit-fixture-") as temp:
         root = Path(temp)
         for name, text, want in (
-            ("positive", "ghp_" + "Q7bR2vP9dE6nF3cA8mG5hJ1kL4sT0uW2xY9zB6C3D", "FINDINGS"),
+            ("positive", "token=" + fake_token, "FINDINGS"),
             ("negative", "ordinary synthetic Action log; no tokens", "PASS"),
         ):
             case = root / name
