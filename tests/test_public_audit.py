@@ -1,18 +1,18 @@
 """Offline deterministic security regressions for the public-readiness audit wrapper."""
 import hashlib
 import os
-from pathlib import Path
 import stat
 import subprocess
 import tempfile
 import unittest
+from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'scripts' / 'audit-public-readiness.sh'
 FAKE = 'SYNTHETIC_MERGE_ONLY_MARKER_5a938bad4b72'
 
 
 def run(*args, check=True, cwd=None, env=None):
-    p = subprocess.run(args, cwd=cwd, env=env, text=True, capture_output=True)
+    p = subprocess.run(args, cwd=cwd, env=env, text=True, capture_output=True, check=False)
     if check and p.returncode:
         raise AssertionError(f'command failed (rc={p.returncode}): {args[0]} {args[1:3]}')
     return p

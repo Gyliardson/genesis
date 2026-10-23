@@ -1,10 +1,10 @@
 """Offline regression tests for secure GitHub text-surface audit outputs."""
 import importlib.util
 import os
-from pathlib import Path
 import stat
 import tempfile
 import unittest
+from pathlib import Path
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "audit-github-text-surfaces.py"

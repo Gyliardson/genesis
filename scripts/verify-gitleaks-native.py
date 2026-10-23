@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Verify genuine Gitleaks against disposable synthetic Git histories only.
 
 Usage: python scripts/verify-gitleaks-native.py
@@ -7,11 +6,11 @@ Does not clone, open, or scan the GENESIS repository.
 import hashlib
 import json
 import os
-from pathlib import Path
 import secrets
 import string
 import subprocess
 import tempfile
+from pathlib import Path
 
 BINARY = Path.home() / ".local/share/genesis-audit/gitleaks-v8.30.1/gitleaks"
 EXPECTED_SHA256 = "88f91962aa2f93ac6ab281d553b9e125f5197bbbce38f9f2437f7299c32e5509"
@@ -20,7 +19,7 @@ EXPECTED_SHA256 = "88f91962aa2f93ac6ab281d553b9e125f5197bbbce38f9f2437f7299c32e5
 def git(repo, *args, expected=0, env=None):
     result = subprocess.run(
         ["git", "-C", str(repo), *args], env=env,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        capture_output=True, text=True, check=False,
     )
     if result.returncode != expected:
         raise RuntimeError(f"synthetic Git setup failed (exit={result.returncode})")
@@ -60,7 +59,7 @@ def main():
     for key in ("GITLEAKS_CONFIG", "GITLEAKS_CONFIG_TOML", "GITLEAKS_BASELINE_PATH"):
         env.pop(key, None)
     env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null", GIT_TERMINAL_PROMPT="0")
-    version = subprocess.run([str(BINARY), "version"], env=env, capture_output=True, text=True)
+    version = subprocess.run([str(BINARY), "version"], env=env, capture_output=True, text=True, check=False)
     if version.returncode != 0 or version.stdout.strip() != "8.30.1":
         raise RuntimeError("SCANNER_VERSION_MISMATCH")
     print("GITLEAKS_BINARY=PASS")
@@ -105,11 +104,11 @@ def main():
                 "--gitleaks-ignore-path", str(ignore),
                 "--log-opts=--all --full-history -m",
                 "--report-format=json", "--report-path", str(report), str(repo),
-            ], cwd=root, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            ], cwd=root, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
             contents = report.read_text(encoding="utf-8")
             findings = json.loads(contents) if contents.strip() else []
             if not isinstance(findings, list):
-                raise RuntimeError(f"{name}: unexpected report structure")
+                raise TypeError(f"{name}: unexpected report structure")
             count = sum(f.get("RuleID") == "github-pat" for f in findings)
             passed = (
                 result.returncode == expected_exit and

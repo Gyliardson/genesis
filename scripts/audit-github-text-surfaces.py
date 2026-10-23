@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Read-only confidential GitHub Issues/PR text audit; never prints source data.
 
 Usage:
@@ -11,7 +10,6 @@ Raw findings and source records stay under a new private directory in $HOME.
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
 import secrets
 import stat
@@ -19,13 +17,14 @@ import string
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 REPO = "Gyliardson/genesis"
 SCANNER = Path.home() / ".local/share/genesis-audit/gitleaks-v8.30.1/gitleaks"
 SCANNER_HASH = "88f91962aa2f93ac6ab281d553b9e125f5197bbbce38f9f2437f7299c32e5509"
 MAX_API_BYTES = 16 * 1024 * 1024
 MAX_PAGES = 50
-ATTACHMENTS = re.compile(r"(?:user-attachments|user-images|private-user-images|/assets/)", re.I)
+ATTACHMENTS = re.compile(r"(?:user-attachments|user-images|private-user-images|/assets/)", re.IGNORECASE)
 
 
 class AuditError(Exception):
@@ -49,7 +48,7 @@ def private_write(path, data):
 def run_private(args, env, cwd=None, timeout=120):
     # No source data, API errors or detector stdout/stderr is ever relayed to terminal.
     try:
-        return subprocess.run(args, env=env, cwd=cwd, capture_output=True, timeout=timeout)
+        return subprocess.run(args, env=env, cwd=cwd, capture_output=True, timeout=timeout, check=False)
     except (OSError, subprocess.TimeoutExpired):
         raise AuditError("private subprocess failed") from None
 
@@ -107,7 +106,7 @@ def scan_records(root, records, name, scanner_env):
     # Capture process output to existing 0600 files, not Bash-created redirects.
     with stdout.open("wb") as output, stderr.open("wb") as errors:
         try:
-            result = subprocess.run(command, cwd=root, env=scanner_env, stdout=output, stderr=errors, timeout=180)
+            result = subprocess.run(command, cwd=root, env=scanner_env, stdout=output, stderr=errors, timeout=180, check=False)
         except (OSError, subprocess.TimeoutExpired):
             raise AuditError("scanner execution failed") from None
     # Native scanner report writers may replace/chmod their report even when

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Confidential, fail-closed audit of currently accessible GitHub Actions text.
 
 Only authenticated GET requests. Run --selftest before --live.
@@ -8,12 +7,12 @@ No history/expired artifacts, edit history, attachments or LFS coverage claimed.
 import importlib.util
 import json
 import os
-from pathlib import Path
 import re
 import stat
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 BASE = Path(__file__).resolve().parent / "audit-github-text-surfaces.py"
 spec = importlib.util.spec_from_file_location("genesis_private_text_audit", BASE)
@@ -61,7 +60,7 @@ def private_log(run_id, corpus, env):
         try:
             result = subprocess.run(
                 ["gh", "run", "view", str(run_id), "--repo", REPO, "--log"],
-                cwd=corpus, env=env, stdout=dest, stderr=errors, timeout=240,
+                cwd=corpus, env=env, stdout=dest, stderr=errors, timeout=240, check=False,
             )
         except (OSError, subprocess.TimeoutExpired):
             return False

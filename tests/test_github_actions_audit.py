@@ -22,15 +22,19 @@ class ActionsAuditTests(TestCase):
 
     def test_incomplete_run_inventory_fails_closed(self):
         batch = {"total_count": 3, "workflow_runs": [{"id": 1}, {"id": 2}]}
-        with patch.object(actions.base, "gh_get", return_value=batch):
-            with self.assertRaises(actions.base.AuditError):
-                actions.safe_counted_pages("repos/Gyliardson/genesis/actions/runs", "workflow_runs", {})
+        with (
+            patch.object(actions.base, "gh_get", return_value=batch),
+            self.assertRaises(actions.base.AuditError),
+        ):
+            actions.safe_counted_pages("repos/Gyliardson/genesis/actions/runs", "workflow_runs", {})
 
     def test_invalid_batch_fails_closed(self):
         batch = {"total_count": 1, "workflow_runs": "untrusted"}
-        with patch.object(actions.base, "gh_get", return_value=batch):
-            with self.assertRaises(actions.base.AuditError):
-                actions.safe_counted_pages("repos/Gyliardson/genesis/actions/runs", "workflow_runs", {})
+        with (
+            patch.object(actions.base, "gh_get", return_value=batch),
+            self.assertRaises(actions.base.AuditError),
+        ):
+            actions.safe_counted_pages("repos/Gyliardson/genesis/actions/runs", "workflow_runs", {})
 
 
 if __name__ == "__main__":
