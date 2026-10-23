@@ -184,7 +184,6 @@ def selftest(root, scanner_env):
     # Real Gitleaks is used only against generated synthetic material.
     alphabet = string.ascii_letters + string.digits
     fake = "ghp_" + "".join(secrets.choice(alphabet) for _ in range(36))
-    assert [x["id"] for x in [{"id": 1}]] == [1]
     pos, _, _ = write_records(root / "positive", [("synthetic", {"id": 1, "body": "token=" + fake}, ("body",))])
     neg, _, _ = write_records(root / "negative", [("synthetic", {"id": 2, "body": "ordinary clean content"}, ("body",))])
     state1, count1, findings = scan_records(root / "positive", pos, "test-positive", scanner_env)
@@ -225,6 +224,14 @@ def main():
             "ACTIONS_LOGS": "NOT_RUN", "ATTACHMENTS": "UNVERIFIED",
             "COVERAGE_STATUS": "PARTIAL", "PREPUBLIC_GATE": "FAIL",
         }))
+        status_path = root / "status.private.env"
+        if stat.S_IMODE(status_path.stat().st_mode) != 0o600 or status_path.is_symlink():
+            raise AuditError("status file permissions invalid")
+        with status_path.open("w", encoding="utf-8") as status_stream:
+            status_stream.write(
+                f"COLLECTION_STATUS=PASS\nSCAN_STATUS={state}\n"
+                "COVERAGE_STATUS=PARTIAL\nPREPUBLIC_GATE=FAIL\n"
+            )
         print("COLLECTION_STATUS=PASS")
         for key, value in counts.items():
             print(f"{key}={value}")

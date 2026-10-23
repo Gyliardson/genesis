@@ -38,6 +38,31 @@ O script requer manifesto independente de confiança **antes da primeira execuç
 
 ### Materiais externos ao Git — coleta privada e verificação humana
 
+**Atualização de segurança (2026-10-23):** o exemplo de `capture_private`
+em Bash abaixo é apenas material histórico de planejamento, **não deve ser
+executado como está** no Codespace. Testes reais provaram que o redirecionamento
+do Bash pode criar arquivos `0646`/`0666` mesmo com `umask 077`. Para a
+primeira fase de textos autenticados (Issues, PRs, comentários e reviews), usar
+o coletor Python que pré-cria arquivos privados `0600` e nunca transmite
+dados brutos ao terminal:
+
+```bash
+python scripts/audit-github-text-surfaces.py --selftest
+# Somente após PASS do selftest, em Codespace autenticado/autorizado:
+python scripts/audit-github-text-surfaces.py --live
+```
+
+**Escopo e limites:** a coleta usa `gh api` read-only com paginação, examina
+títulos/corpos e texto de comentários/reviews com Gitleaks v8.30.1 validado
+por SHA256; os resultados e corpos permanecem em pasta nova `0700` no
+`$HOME` (arquivos `0600`). Resumos exibem somente contagens e estados.
+O scanner não valida direitos autorais, PII nem a segurança semântica dos
+conteúdos; anexos são apenas contados aproximadamente por links e não baixados.
+Histórico de edições de comentários, timelines, Actions/logs/annotations,
+anexos, Wiki, LFS, forks e APIs inacessíveis continuam `UNVERIFIED`.
+Nenhum resultado autoriza publicação; `PREPUBLIC_GATE=FAIL`.
+
+
 Exige GitHub CLI autenticada com escopo de **leitura** e acesso a cada superfície. Nunca anexar dumps brutos à Issue/PR:
 
 ~~~bash
