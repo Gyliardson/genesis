@@ -29,5 +29,25 @@ class PublicCIWorkflowContractTests(unittest.TestCase):
         self.assertIn("run: pytest -q", workflow)
 
 
+    def test_ci_uses_hashes_and_offline_build(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("--require-hashes", workflow)
+        self.assertIn("--only-binary=:all:", workflow)
+        self.assertIn("--no-build-isolation", workflow)
+        self.assertIn("--no-index --no-deps", workflow)
+        self.assertNotIn('pip install -e ".[dev]"', workflow)
+
+    def test_ci_lock_contains_ten_exact_hashes(self):
+        import re
+        lock = WORKFLOW.parents[2] / "requirements/ci-py311-ubuntu24.04-x86_64.txt"
+        lines = [x for x in lock.read_text(encoding="utf-8").splitlines()
+                 if x.strip() and not x.startswith("#")]
+        self.assertEqual(len(lines), 10)
+        self.assertTrue(all(re.fullmatch(
+            r"[A-Za-z0-9_.-]+==[0-9][A-Za-z0-9_.-]* --hash=sha256:[0-9a-f]{64}", x
+        ) for x in lines))
+        self.assertTrue(any(x.startswith("hatchling==") for x in lines))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -30,16 +30,26 @@ Preferir avaliação pareada dos mesmos workloads com igual informação, sem ac
 
 Não publicar logs brutos que revelem segredos ou dados pessoais. Dados externos dependem de licenças, direitos de redistribuição e auditoria independente. Ver as propostas em `docs/experiments.md` e questões abertas em `docs/decisions.md`.
 
-## PUB-05 — integridade da instalação Python (gate ainda aberto)
+## PUB-05 — instalacao CI com hashes (candidato local)
 
-**Evidência atual:** `pyproject.toml` declara `hatchling>=1.25` para build isolado e extras `pytest>=8`, `ruff>=0.9`; a CI instala `-e ".[dev]"` diretamente do índice, sem pin de versões transitivas, hashes ou lock. `python-version: "3.11"` e a imagem `ubuntu-24.04` também não fixam patch/intermediários. Nenhum lock reproduzível foi gerado ou validado nesta remediação; não tratar a ausência de falha observável como integridade comprovada.
+Testes do operador em 26/10/2026: Codespace Ubuntu 24.04.5, Conda Python 3.11.17,
+Ruff PASS, pytest 24 testes/45 subtests PASS, pip check PASS. Dez wheels
+PyPI foram baixados para Linux x86_64, com SHA-256 registrados. Instalacao
+em venv offline via `--require-hashes` PASS, hash invalido foi rejeitado,
+e build e instalacao offline do wheel GENESIS extraido de `git archive HEAD`
+PASS. Os hashes selecionam wheels para este alvo; nao sao lock universal.
 
-**Estratégia incremental e reversível (sem impor ferramenta arbitrária):**
+A CI candidata instala requirements fixados com `--require-hashes` e
+`--only-binary=:all:`, inclui o build backend Hatchling no conjunto verificado
+e constroi o projeto com `--no-build-isolation --no-deps`, evitando nova
+resolucao de dependencias de build. Mantem caminhos `pull_request` nao
+privilegiados, Ruff, pytest e `pip check`.
 
-1. **Antes da exposição:** conservar o inventário e os testes locais (Python 3.14.2, não Python 3.11) e avaliar direitos e riscos sem fazer afirmações de resolução idêntica. **Após autorização de merge e de conversão pública:** executar `workflow_dispatch` na branch `main` em runner GitHub-hosted isolado, Python 3.11/Ubuntu 24.04, sem substituir `pull_request`/push; conferir SHA, run, job e steps e capturar `python --version`, `python -m pip --version`, `python -m pip inspect` e `python -m pip freeze --all` em artefatos de acesso restrito/sem segredos. Identificar versões **efetivamente resolvidas**, `hatchling` e dependências transitivas, plataforma, índices e hashes dos wheels; verificar advisories/CVEs para versões específicas. Até essa execução: `PUBLIC_CI=NOT_RUN` e `PUB-05=OPEN`.
-2. Escolher e documentar um único mecanismo para o ambiente de CI: requirements travado com hashes (por exemplo `pip-compile --generate-hashes` a partir de entradas revisadas), lock de ferramenta equivalente ou constraints + prova de integridade dos artefatos. **Constraints com versões sem hashes não dão integridade de download.** Resolver também o build backend/ambiente PEP 517; constraints runtime não fixam automaticamente o build isolado. Preferir wheels confiáveis, versão/hashes registrados; não confiar em lock parcial.
-3. Gerar o artefato num ambiente limpo da mesma plataforma alvo e com índice confiável; revisar todas as dependências diretas, transitivas e de build, hashes, licença e relatórios de vulnerabilidade. Provar reconstrução independente e `pip check`; somente depois mudar a CI para uma instalação que **falha fechada** diante de drift/hash inválido. Um possível fluxo é instalar distribuições travadas via `pip install --require-hashes -r <lock-validado>` e então instalar o projeto local com `--no-deps --no-build-isolation` **se** o ambiente de build validado já estiver presente. Não executar este fluxo nem alegar suporte antes de testá-lo.
-4. Negative tests: adulterar hash em cópia temporária, remover requisito transiente, mudar versão e verificar que a instalação rejeita divergências; positive tests: instalação limpa, `ruff check .`, `pytest -q` e `pip check` no **mesmo candidate SHA**. Reavaliar versões/lock por PR dependabot/manual periódico, sem jobs de custo ou privilégio adicionais por padrão.
-5. Distinguir **reproducibilidade** (mesmas resoluções), **integridade** (artefatos confiáveis/hashes), **vulnerabilidades conhecidas** (avaliação datada) e **execução segura do código de fork** (limites do GITHUB_TOKEN/runner). Nenhum dos quatro é implicado apenas pelos outros. Não fixar versões escolhidas por palpite nem tornar green removendo Ruff/pytest.
+**Pendencias:** comprovacao independente de origem/licenca/advisories de
+versoes e artefatos; run real e review do novo HEAD na CI GitHub; compatibilidade
+do runner `setup-python` com o lock Linux x86_64, diferentemente do Python
+Conda local; teste de drift/omissao transiente; governanca de atualizacao.
+Hosted Actions privado continua bloqueado por falta de minutos: nao disparar.
+Nao presumir autorizacao de merge, publicacao ou licenca adicional.
 
-**Status:** PLANO DOCUMENTADO; resolução/lock/hashes e teste limpo continuam **UNVERIFIED** e PUB-05 **OPEN**. `pyproject.toml` e a CI de #4 ficam sem mudanças especulativas neste PR.
+**Estado:** PUB-05 PARTIAL/OPEN; PREPUBLIC_GATE=FAIL.
