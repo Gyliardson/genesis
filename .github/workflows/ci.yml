@@ -34,7 +34,8 @@ jobs:
           test "$(uname -m)" = x86_64
           python -c 'import sys; assert sys.version_info[:2] == (3, 11)'
       - name: Install pinned wheel dependencies with hashes
-        run: python -m pip --isolated install --no-input --only-binary=:all: --require-hashes --index-url https://pypi.org/simple -r requirements/ci-py311-ubuntu24.04-x86_64.txt
+        run: |
+          python -m pip --isolated install --no-input --only-binary=:all: --require-hashes --index-url https://pypi.org/simple -r requirements/ci-py311-ubuntu24.04-x86_64.txt
       - name: Build and install checked-out GENESIS wheel offline
         run: |
           mkdir -p "${RUNNER_TEMP}/genesis-wheel"

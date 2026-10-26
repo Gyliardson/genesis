@@ -33,6 +33,7 @@ class PublicCIWorkflowContractTests(unittest.TestCase):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("--require-hashes", workflow)
         self.assertIn("--only-binary=:all:", workflow)
+        self.assertIn("run: |\n          python -m pip --isolated install", workflow)
         self.assertIn("--no-build-isolation", workflow)
         self.assertIn("--no-index --no-deps", workflow)
         self.assertNotIn('pip install -e ".[dev]"', workflow)
