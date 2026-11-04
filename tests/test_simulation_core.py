@@ -61,7 +61,13 @@ def test_golden_b_completes_before_simultaneous_arrival_and_start() -> None:
         ("J2", 2, 3),
     ]
     at_two = [(e.kind, e.job_id) for e in result.events if e.tick == 2]
-    assert at_two == [("COMPLETE", "J1"), ("ARRIVE", "J2"), ("START", "J2")]
+    # After starting J2 the Core records its forced advance to J2 completion.
+    assert at_two == [
+        ("COMPLETE", "J1"),
+        ("ARRIVE", "J2"),
+        ("START", "J2"),
+        ("FORCED_ADVANCE", None),
+    ]
 
 
 def test_golden_c_fixed_h_preserves_all_censored_jobs() -> None:
