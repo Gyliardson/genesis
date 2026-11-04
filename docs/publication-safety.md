@@ -1,5 +1,34 @@
 # Publicação pública: procedimento de segurança
 
+## Atualização verificada de execução — 04/11/2026
+
+A fase de execução da CI descrita historicamente abaixo como
+`PRIVATE_HOSTED_CI=BLOCKED_RESOURCE` foi **superada para o run
+específico** [#41850235467](https://github.com/Gyliardson/genesis/actions/runs/41850235467).
+No SHA `da1c6605860ecf842f5b4be81613e0448b71023a` do PR #24,
+o GitHub-hosted `ubuntu-24.04`/Python 3.11 concluiu com
+`success`: dez wheels com hashes, build e instalação offline,
+Ruff, **26 testes + 45 subtests** e `pip check`. A evidência
+não garante orçamento de CI futuro nem valida a exposição pública.
+
+Gitleaks 8.30.1 verificado e controles sintéticos reais: PASS;
+auditoria local de 46 commits/90 blobs alcançáveis: zero findings
+no detector. O inventário remoto listou 11 refs, 112 comentários,
+11 reviews e 60 runs com zero artifacts retornados. Checks de
+padrões conhecidos nos textos remotos não tiveram matches. **PUB-01
+permanece PARTIAL:** logs/annotations históricos inacessíveis,
+refs ocultas, anexos externos, análise semântica e direitos não
+foram integralmente auditados. A licença Apache-2.0 foi aprovada,
+mas titularidade/atribuição continuam pendentes. `main` segue
+`protected=false`, com regras privadas 403 por limitação do
+plano; canal confidencial PUB-06 ainda UNVERIFIED.
+
+**A versão atual dos gates deve ser lida junto com os checkpoints da
+[Issue #23](https://github.com/Gyliardson/genesis/issues/23).
+PREPUBLIC_GATE=FAIL; não foi autorizada mudança de visibilidade.
+Os parágrafos abaixo que descrevem bloqueios de CI em 23/10/2026
+representam evidências históricas, não o estado de 04/11/2026.**
+
 **Esta é uma política de preparação, não uma autorização de divulgação.** O registro de gates e evidências atuais permanece na [Issue #23](https://github.com/Gyliardson/genesis/issues/23). Não declarar `PREPUBLIC_GATE=PASS` apenas porque um PR foi criado.
 
 ## Decisão de licença aprovada — 23/10/2026

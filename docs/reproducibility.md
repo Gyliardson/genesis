@@ -12,7 +12,7 @@ ruff check .
 pytest -q
 ```
 
-Registre SO/arquitetura, Python, versões resolvidas de pacotes, comando e SHA. Conforme confirmação do operador em 23/10/2026, a execução de GitHub-hosted Actions no repositório privado está bloqueada por falta de minutos disponíveis (Issue #4); testes locais em Python 3.14.2 não substituem a CI em Python 3.11. Não declare esses comandos PASS sem execução e evidência no SHA relevante.
+Registre SO/arquitetura, Python, versões resolvidas de pacotes, comando e SHA. O comando de instalação editable acima é uma conveniência para desenvolvimento: **não é equivalente** ao fluxo hash-locked do CI. A restrição de minutos privados relatada em 23/10/2026 é um registro histórico, superado para o run específico do PR #24 em 04/11/2026, mas não comprova disponibilidade futura ilimitada. Não declare comandos PASS sem execução e evidência no SHA relevante.
 
 ## Contrato de um experimento futuro
 
@@ -30,26 +30,46 @@ Preferir avaliação pareada dos mesmos workloads com igual informação, sem ac
 
 Não publicar logs brutos que revelem segredos ou dados pessoais. Dados externos dependem de licenças, direitos de redistribuição e auditoria independente. Ver as propostas em `docs/experiments.md` e questões abertas em `docs/decisions.md`.
 
-## PUB-05 — instalacao CI com hashes (candidato local)
+## PUB-05 — dependências fixadas e instalação CI (evidências de 04/11/2026)
 
-Testes do operador em 26/10/2026: Codespace Ubuntu 24.04.5, Conda Python 3.11.17,
-Ruff PASS, pytest 24 testes/45 subtests PASS, pip check PASS. Dez wheels
-PyPI foram baixados para Linux x86_64, com SHA-256 registrados. Instalacao
-em venv offline via `--require-hashes` PASS, hash invalido foi rejeitado,
-e build e instalacao offline do wheel GENESIS extraido de `git archive HEAD`
-PASS. Os hashes selecionam wheels para este alvo; nao sao lock universal.
+O workflow do PR #24 usa `ubuntu-24.04`, Python 3.11 e
+`requirements/ci-py311-ubuntu24.04-x86_64.txt`: dez wheels pinados
+por versão e SHA-256, `--require-hashes`, `--only-binary=:all:`,
+build do projeto com `--no-index --no-deps --no-build-isolation`
+após instalar o Hatchling verificado, Ruff, pytest e `pip check`.
+**Este lock é específico de plataforma/arquitetura, não universal.**
 
-A CI candidata instala requirements fixados com `--require-hashes` e
-`--only-binary=:all:`, inclui o build backend Hatchling no conjunto verificado
-e constroi o projeto com `--no-build-isolation --no-deps`, evitando nova
-resolucao de dependencias de build. Mantem caminhos `pull_request` nao
-privilegiados, Ruff, pytest e `pip check`.
+**Execução hospedada efetiva:** [GitHub Actions run #41850235467](https://github.com/Gyliardson/genesis/actions/runs/41850235467)
+em 04/11/2026, evento `pull_request`, SHA
+`da1c6605860ecf842f5b4be81613e0448b71023a`, job
+`python` em GitHub-hosted Ubuntu 24.04/Python 3.11: **PASS** em
+instalação com hashes, build/instalação, Ruff, **26 testes e 45
+subtests**, `pip check`. Essa evidência é vinculada ao SHA indicado;
+commits posteriores precisam de checks próprios.
 
-**Pendencias:** comprovacao independente de origem/licenca/advisories de
-versoes e artefatos; run real e review do novo HEAD na CI GitHub; compatibilidade
-do runner `setup-python` com o lock Linux x86_64, diferentemente do Python
-Conda local; teste de drift/omissao transiente; governanca de atualizacao.
-Hosted Actions privado continua bloqueado por falta de minutos: nao disparar.
-Nao presumir autorizacao de merge, publicacao ou licenca adicional.
+**Verificação independente no Codespace:** Ubuntu 24.04.5,
+Python 3.11.17, `actionlint v1.7.12`, download de dez wheels
+com hashes, venv novo, instalação offline, build e import de wheel,
+Ruff, 26 testes/45 subtests e `pip check`: **PASS**. Quatro controles
+negativos com `pip` rejeitaram hash adulterado, dependência transitiva
+omitida, wheel de arquitetura incompatível e versão divergente.
+O wheel GENESIS foi construído a partir de `git archive` do SHA acima;
+esse ensaio não substitui a execução hospedada, também confirmada.
 
-**Estado:** PUB-05 PARTIAL/OPEN; PREPUBLIC_GATE=FAIL.
+**Advisories e procedência:** consultas GHSA e OSV de 04/11/2026
+retornaram zero advisories *conhecidos* para essas dez versões.
+Todos os digests de wheel conferiram com metadados oficiais do PyPI;
+sete attestations de publicação disponíveis foram validadas
+criptograficamente com `pypi-attestations==0.0.31` contra os respectivos
+repositórios publicadores. O PyPI Integrity API retornou 404 para a
+provenance dos wheels exatos de `pygments 2.21.0`,
+`ruff 0.17.2` (Linux x86-64) e `tomlkit 0.15.2`: **não atestados
+neste procedimento**, não necessariamente comprometidos.
+Esses controles não provam ausência de malware nem reprodutibilidade
+source-to-wheel.
+
+**Gates separados:** aceite de titularidade, atribuição e redistribuição
+de terceiros; varredura histórica/remota completa; proteção efetiva de
+`main`; canal confidencial de vulnerabilidades; revisão final de
+publicação. **PUB-05 — CI e testes hash-locked: PASS no SHA acima,
+com limitações de provenance documentadas. PREPUBLIC_GATE=FAIL.**
