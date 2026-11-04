@@ -1,73 +1,209 @@
-# Arquitetura provisória
+# Arquitetura mínima e contratos de domínio — CONTRACT-01
 
-> **Proposta, não implementação existente.** Este documento não autoriza incorporar dependências sem benchmark e revisão.
+> **STATUS: D-017 ACCEPTED (2026-11-04); demais contratos PROPOSED / DECISION_REQUIRED.** Especificação candidata e reversível, **não** ratificação de interfaces, escolha de simulador ou implementação. Vinculada a [G-003](https://github.com/Gyliardson/genesis/issues/3) e à [síntese WAVE-01](https://github.com/Gyliardson/genesis/issues/3#issuecomment-6330212075). Os findings de revisão independente do [PR #21](https://github.com/Gyliardson/genesis/pull/21) precisam ser incorporados **antes** de tornar alguma decisão material ACCEPTED. A CI desse PR falhou sem primeira causa confirmada ([G-004](https://github.com/Gyliardson/genesis/issues/4)); não confundir com falha comprovada dos testes.
+>
+> **Evidência:** RESEARCH-01 = documentação científica no PR #21; RESEARCH-02 = propostas e oráculos nas [Issues #5](https://github.com/Gyliardson/genesis/issues/5), [#6](https://github.com/Gyliardson/genesis/issues/6), [#8](https://github.com/Gyliardson/genesis/issues/8); RESEARCH-03 = matrizes nas [Issues #9](https://github.com/Gyliardson/genesis/issues/9), [#10](https://github.com/Gyliardson/genesis/issues/10), [#19](https://github.com/Gyliardson/genesis/issues/19). Todos os detalhes abaixo são **design proposals**, não resultados experimentais do GENESIS.
 
-## Componentes conceituais
+## Registro da decisão D-017 (2026-11-04)
 
-1. **Simulation Core:** relógio lógico, eventos, recursos, filas e semântica de execução. Seed e desempates determinísticos. SimPy ou motor próprio — **a decidir**.
-2. **Workload Generator:** tarefas sintéticas, distribuições de duração, chegadas, requisitos de memória/CPU, estimativas observáveis; futuramente replay de traces públicos.
-3. **Policy Interface:** recebe somente a observação permitida e retorna uma ação (p.ex. id de job admissível ou `WAIT`, quando permitido). A observação e a action mask são estáveis e documentadas.
-4. **Safety/Feasibility Layer:** valida capacidade, elegibilidade, deadlines e ações ilegais; usa fallback predefinido quando necessário. Política não pode contornar regras do ambiente.
-5. **Evolution Engine:** representação de genoma, mutação, seleção, população, avaliação sobre múltiplos cenários; no MVP é possível usar MLP de topologia fixa. NEAT, CMA-ES e outras técnicas serão avaliadas depois.
-6. **Evaluation Lab:** executa políticas com os **mesmos workloads e seeds**, produz métricas, agregações, incerteza estatística, artefatos e metadados de configuração.
-7. **Deployment Adapter (futuro):** execução de tarefas sintéticas de verdade, em workers isolados, inicialmente observação/sugestão sem atuar; limites e rollback são obrigatórios.
+O operador ratificou **ActionA_v0** na [Issue #3](https://github.com/Gyliardson/genesis/issues/3#issuecomment-6640438542): havendo READY admissível com capacidade livre simultânea de CPU e memória, a Policy escolhe `START(job_id)` da máscara, sem WAIT voluntário; admissões adicionais podem ocorrer no mesmo tick. Sem job elegível, o Core avança por evento exógeno ou encerra de modo auditável, sem antecipar informação futura. FCFS-scanning é baseline legal; FCFS estrito head-of-line é apenas diagnóstico em outro action space e não equivale a backfilling com reserva. **ActionB_v1** permanece futura proposta separada; não atribuir qualquer ganho/perda experimental a esta decisão. D-021 e D-020 seguem abertos/experimentais. Referências antigas a D-017 como OPEN nos históricos de review abaixo registram o estado em outubro de 2026, não anulam a ratificação.
 
-## Fluxo simplificado
+## 1. Problema e menor arquitetura verificável
 
+Um único nó lógico; jobs online independentes, não preemptivos, sem migração, CPU e memória como unidades inteiras reservadas do START até COMPLETE. Concorrência entre jobs é permitida quando a soma das duas reservas cabe. Durações verdadeiras são geradas exogenamente e ficam ocultas das policies até a conclusão; estimates são públicas. Não modelar GPU, DAG, deadlines/prioridades, consumo intra-job ou execução real neste contrato. Todo experimento precisa ser reproduzível com eventos e traces versionados antes de qualquer aprendizado.
+
+| Componente | Responsabilidade exclusiva | Não pode fazer |
+| --- | --- | --- |
+| Workload Generator | Produzir um trace exógeno imutável, independente da policy; streams RNG e hashes versionados | Consultar policy, gerar duração ao iniciar, compartilhar RNG com evolução |
+| Simulation Core | Armazenar verdade e estado privado, relógio, ordenação de eventos, transições, reservas e log canônico | Delegar transições ou verdade privada à policy; inferir segurança de logits |
+| Observation Projector | Construir snapshot público imutável, age e máscara candidata apenas de campos públicos | Incluir durações verdadeiras, próximo evento, IDs derivados de segredo |
+| Policy | Escolher uma ação solicitada a partir de observações públicas; estado interno próprio | Mutar simulação, reservar recursos, executar comandos, ler ambiente interno |
+| Safety / Feasibility | Validar payload/tipo, estado READY, máscara, CPU/mem e admissibilidade **novamente** contra estado autoritativo; registrar rejeição/fallback | Confiar na máscara ou no modelo como autoridade; executar side effects |
+| Evolution Engine (futuro M2) | Gerar, avaliar e selecionar parâmetros de policies via interface versionada | Mudar regras, observar truth oculto ou executar tarefas externas |
+| Evaluation Lab | Rodar políticas em traces pareados; consumir log privado pós-episódio, métricas, censura, custos e incerteza | Devolver métrica/verdade privada à policy durante a decisão |
+| Deployment Adapter (futuro) | Shadow/isolation, quota, timeout, fallback, audit, rollback sob autorização | Tratar performance no simulador como aprovação para produção |
+
+Uma única implementação mínima do simulador e um pequeno adapter de policy são suficientes no início. Nenhum plugin/SDK/serviço/framework é pressuposto. SimPy, DES próprio, GA, RL e NEAT continuam sujeitos a evidência (D-006/D-007).
+
+## 2. Tipos e fronteiras — esquema candidato v0
+
+Usar inteiros para CPU/memória e tempo lógico discretizado. `Tick = int >= 0`; `Duration = int > 0`; `Units = int > 0`; `JobId = opaque stable string`; `SchemaVersion = immutable string`. A escala física do tick, limite máximo, regras de quantização, overflow e parse do trace precisam constar no manifesto; proibir float/NaN/Inf em qualquer campo discreto. A policy pode ter scores reais, mas somente finitos e validados no adapter. **Uma conversão silenciosa de floats para tick é proibida.**
+
+### Job — verdade, projeção e lifecycle
+
+| Estrutura | Campos e tipos | Semântica / visibilidade |
+| --- | --- | --- |
+| `JobSpecPrivate` | `id: JobId`, `arrival_tick: Tick`, `cpu_units: Units`, `memory_units: Units`, `estimated_duration_ticks: Duration`, `actual_duration_ticks: Duration` | Trace imutável; `actual_duration_ticks` **private only**; ID não codifica segredo, prioridade ou classe oculta |
+| `JobRuntimePrivate` | `status: FUTURE\|READY\|RUNNING\|COMPLETED\|REJECTED_INFEASIBLE`; `started_at?: Tick`, `completed_at?: Tick` | Pertence exclusivamente ao Core; `ADMIT` é registro instantâneo, não estado durável adicional |
+| `ReadyJobPublic` | `id`, `arrival_tick`, `cpu_units`, `memory_units`, `estimated_duration_ticks`, `waiting_age_ticks: Tick` | Apenas jobs READY; `waiting_age_ticks = now - arrival_tick`; snapshot frozen; **sem** actual, remaining, completion forecast, class secret, rank ou index como features |
+| `ExperimentRunOutcome` | `run_status: COMPLETED / CENSORED_FIXED_H / TIMEOUT / POLICY_STALL / ERROR`; `stop_reason: ALL_COMPLETED / EVALUATION_CUTOFF / DRAIN_BUDGET / NO_EXOGENOUS_PROGRESS / INVALID_ACTION / DECIDE_EXCEPTION / NO_RETURN / DECISION_WALL_TIMEOUT / SIMULATION_ERROR`; `t_stop: Tick`; `error_code?: sanitized enum` | **Episódio**, não job: causa global da parada, auditável sem expor truth |
+| `FinalJobOutcome` | `id: JobId`, `job_phase_at_stop: FUTURE / READY / RUNNING / COMPLETED / REJECTED_INFEASIBLE`, `event_observed: bool`, `started_at?: Tick`, `completed_at?: Tick`, `observed_time_ticks?: Tick`, `censor_tick?: Tick` | **Job**, não episódio: enum preserva `READY` e `RUNNING`; `QUEUED_AT_H` e `RUNNING_AT_H` são labels exclusivamente derivados do relatório FIXED_H, nunca membros de `job_phase_at_stop`; `event_observed=true` somente para COMPLETED; FUTURE não recebe bound `t_stop-arrival` |
+
+Jobs com demanda individual acima da capacidade são rejeitados **antes de admissão**, como cenário negativo explícito; o gerador produtivo deve emitir somente jobs factíveis. Rejeitados nunca entram na máscara/denominador de coorte factível, mas sua contagem é obrigatoriamente publicada. IDs únicos por trace. Estado legal: FUTURE → READY → RUNNING → COMPLETED; rejeição é desfecho de validação, não uma execução. Um job inicia **no máximo uma vez**, termina no máximo uma vez e nunca libera reserva duas vezes.
+
+### ResourcePool
+
+`ResourcePool = {cpu_capacity: Units, memory_capacity: Units, cpu_allocated: int, memory_allocated: int}`; `cpu_free = cpu_capacity - cpu_allocated`, igualmente para memória. Capacidades constantes num episódio. Reservar ambas as dimensões atomicamente na transição START; liberar ambas atomicamente na conclusão. Para todo instante, `0 <= allocated_r <= capacity_r` e `allocated_r = sum(r_j for RUNNING jobs)`. Nunca usar uso observado de sistema real como equivalente a reserva.
+
+### Observation / Action / Policy
+
+| Contrato | Shape v0 / responsabilidade |
+| --- | --- |
+| `ObservationV0` | `schema_version`, `now_tick: Tick`, `cpu_capacity, cpu_free, memory_capacity, memory_free: int`, `ready_jobs: tuple[ReadyJobPublic,...]`, `eligible_job_ids: tuple[JobId,...]`, `wait_allowed: bool`. Ordenação canônica por `(arrival_tick,id)`; a policy nunca usa posição/ID como score/feature, salvo desempate externo |
+| `ActionA_v0` | **D-017 ratificado pelo operador em 04/11/2026:** somente `START(job_id: JobId)` se máscara elegível não vazia; caso contrário o Core avança sem consultar Policy. **B alternativo (não ratificado):** `ActionB_v1 = START(job_id) or WAIT`, sob limite comum e com schema novo; ADVANCE/TERMINATE são internos ao Core |
+| `PolicyV0` | **Assinatura candidata única, compatível com PR #21 @ `3f446682`:** `reset(policy_seed: int, public_config: PublicPolicyConfig) -> None`; `decide(observation: ObservationV0) -> ActionA_v0` no A. Alternativa B exige interface `PolicyB_v1` com `ActionB_v1`. Estado interno separado do Core, RNG exógeno, split e trace; reset por episódio |
+| `PublicPolicyConfig` | `observation_schema`, `action_schema`, `protocol_id`, capacidades e escalas de features calibradas exclusivamente em TRAIN; sem `H_e`, split, trace hash, actual duration, scenario seed nem próximo evento. `policy_seed` é argumento separado para seu próprio RNG |
+| `ActionMaskA_v0` | IDs READY que cabem nas duas capacidades; `wait_allowed=false` no candidato A. `ObservationB_v1` requer máscara e limites de WAIT próprios, sempre revalidados por Safety independente da máscara pública |
+| `ExperimentV0` | `experiment_id`, `schema_versions`, `protocol_id`, `simulator_commit`, `policy_artifact_version`, `scenario_id`, `split: TRAIN / VAL / TEST_ID / TEST_OOD`, `trace_hash`, `generator_version`, `scenario_seed`, `policy_seed` (= evaluation-seed), `evaluation_replicate`, `training_seed?`, `arrival_cutoff_tick`, `evaluation_cutoff_tick`, `mode: DRAIN / FIXED_H`, `run_outcome: ExperimentRunOutcome`, `job_outcomes: tuple[FinalJobOutcome,...]`, `metrics_version`, `budget`, `environment_metadata` | Manifesto **privado** do runner, cada job/execução contabilizado; apenas config público chega à Policy; scenario/training/policy seeds separados |
+
+`eligible_job_ids` deve ser estável sob permutação da entrada (ordem canônica). Scores neurais por job precisam ser equivariante à permutação; seleção determinística por melhor score finito e, em empates, menor chave pública `(arrival_tick,id)` fora da rede. IDs opacos nunca codificam `actual_duration`, grupo experimental ou futuro. **Histórico permitido do PR #21 é proposta extensível, não autorização implícita:** no candidato `ObservationV0` não há histórico agregado (`history_aggregates=None`); se ratificado, definir agregados públicos simétricos, janela, atualização, custo e testes de leakage, versionando Observation, normalização e checkpoint. Running jobs continuam representados só por reservas. Running jobs são inicialmente representados somente por recursos ocupados; não revelar seu remaining time nem conclusão agendada.
+
+**Exemplo fechado:** pool CPU=2, MEM=2; J1 chega em 0, requer (2,1), estimated=4, actual=3; J2 chega em 0, requer (1,1), estimated=2, actual=1. A observação em 0 lista ambos sem `actual`; ao escolher START(J1), a máscara fica vazia (CPU livre 0). Em t=3 J1 completa e libera; J2 admite e completa em t=4. Os valores `actual` e `completed_at` aparecem somente no trace privado/post-run. Outro trace com `actual` alterado **mas mesma observação pública em 0** deve produzir a mesma decisão em 0 com o mesmo estado/seed de policy.
+
+## 3. Protocolo de eventos e progresso
+
+Para cada timestamp t em ordem não decrescente:
+
+1. Core avança ao menor timestamp de evento externo futuro elegível (chegada ou conclusão), sem revelar seu valor à Policy. Nunca permite `next_tick < now_tick`.
+2. Processa **todas** as conclusões em t, ordenadas por ID estável; transita RUNNING→COMPLETED e libera recursos **uma vez**. Depois processa **todas** as chegadas permitidas em t, ordenadas por ID; transita FUTURE→READY ou rejeita inviabilidade explícita.
+3. Cria observation/mask imutável **somente após** concluir ambas as fases. Se existe ao menos um elegível e t ainda admite START, chama Policy. Ao receber START válido, Safety valida e Core reserva/inicia atomicamente em t; reconstrói máscara e pode decidir outra vez **no mesmo t**. Cada START remove exatamente um READY e o limite por timestamp é o número inicial de READY (mais arrivals processados), impedindo loop de tempo zero.
+4. Se não há elegível, Policy não é chamada: o Core faz `FORCED_ADVANCE` até o próximo evento externo; se nenhum existir e ainda houver READY, marca `POLICY_STALL/ERROR` conforme causalidade, nunca faz spin. Se não houver trabalho pendente/futuro admitido, termina `COMPLETE`.
+5. Payload desconhecido, ausência de retorno (`None`), job já iniciado, job fora da máscara, recurso insuficiente, WAIT proibido ou score NaN/Inf são `INVALID_ACTION`/`NO_RETURN`; exceção de `Policy.decide` é `DECIDE_EXCEPTION`, budget wall-time por decisão violado é `DECISION_WALL_TIMEOUT`, falha interna do Core é `SIMULATION_ERROR`. Wrapper isolado captura retorno, exceções e timeout (quando suportado) e encerra episódio como `ERROR`, com causa sanitizada; nenhuma mutação parcial de recursos. **Fail-fast candidato D-021, não ACCEPTED**. Eventual fallback determinístico comum requer regra versionada, custo/frequência reportados e aprovação; não disfarçar falha como sucesso.
+
+Ordenação total do log: `(tick, phase[COMPLETE,ARRIVE,ADMIT/START,ADVANCE/TERMINATE], sequence, id)`; `sequence` é determinística e estável na serialização. Clock monótono, durações estritamente positivas garantem que START não gera COMPLETE imediato. `log_hash` usa serialização canônica, parâmetros/versionamento fixados, sem depender da ordem de `dict`, hash() de Python ou clock wall-time. Logs privados podem conter verdade; logs e mensagens entregues à Policy só contêm projeções públicas. Nenhum logger/feature/normalizer chamado pela Policy acessa a verdade privada.
+
+**Simultaneidade:** conclusão em t libera recurso antes de chegada em t; ambas precedem a primeira decisão. Empates são resolvidos por IDs opacos estáveis. Incluir eventos em t=0, múltiplas chegadas/conclusões, COMPLETE e ARRIVE no mesmo t, e o caso no limite de horizonte na bateria de oráculos.
+
+## 4. Conflito material — WAIT versus FCFS estrito
+
+**ACCEPTED: D-017 / ActionA_v0, 04/11/2026** ([ratificação na Issue #3](https://github.com/Gyliardson/genesis/issues/3#issuecomment-6640438542)). A máscara obrigatória `START quando existe job factível` implica política work-conserving relativamente ao conjunto factível, mas **não** permite FCFS estrito head-of-line: se o primeiro READY não couber e um posterior couber, FCFS estrito precisa ociosidade voluntária. Não rotular scanning/backfill como FCFS estrito, nem comparar protocolos diferentes como se fossem iguais.
+
+| Alternativa | Viabiliza FCFS estrito? | Comparabilidade e riscos |
+| --- | --- | --- |
+| **A (ACCEPTED para o MVP inicial):** START obrigatório quando existe elegível; avanço forçado caso contrário; baseline `FCFS-scanning` | **Não**; FCFS head-of-line só como diagnóstico separado, não baseline principal legal | Espaço pequeno, progresso limitado, menos reward hacking; risco de excluir comportamento estratégico de ociosidade; medir starvation de backfill |
+| **B:** WAIT voluntário disponível **para todas** as policies com elegíveis; um WAIT consome o timestamp e avança a evento exógeno futuro; falha no último evento; teto de espera/ociosidade/fairness e mesmo fallback | Sim | Captura idle estratégico, porém aumenta ação/censura e risco de stall; requer comparações reexecutadas, métricas e controles mais fortes |
+| **C:** exceção de WAIT apenas para FCFS estrito | Sim, mas só por privilégio | **Rejeitar para comparação principal:** action spaces diferentes invalidam paridade informacional/operacional |
+
+**Oráculo discriminativo de WAIT/FCFS:** pool (2,2). R chega em 0, req=(1,1), d=5 e inicia; H chega em 1, req=(2,1), d=1; Z chega em 1, req=(1,1), d=1. Em t=1 H (head) não cabe e Z cabe. Protocolo A com scanning inicia Z@1–2, depois H@5–6. FCFS head-of-line precisaria esperar em t=1, admitir H@5–6 e Z@6–7, portanto requer B. Na ausência de qualquer evento externo futuro, WAIT voluntário B com elegíveis causa POLICY_STALL, nunca um loop. Esse é um oráculo a implementar, não uma medição executada.
+
+**Terminologia:** `FCFS-scanning` significa **first eligible fit** em ordem (arrival,id), **sem reserva para o head**; não é EASY/conservative backfilling. A regra pode causar starvation do head. O custo a medir é **end-to-end** (construção da máscara, scan, validação, inferência/logging), não apenas O(1)/O(N) do critério.
+
+**R22-01:** **Protocolo A foi ratificado pelo operador em 04/11/2026** na Issue #3; **B é alternativa** caso idle estratégico/FCFS HOL tenha justificativa científica, com WAIT para todas as policies, oráculos e schemas versionados. A ratificação de D-017 não valida empiricamente o Core nem ratifica outras decisões.
+
+**Recomendação para revisão, não aprovação:** A como primeiro protocolo de corretude + scanning-FCFS, SJF-estimado, random-valid e fit com **mesma máscara**. FCFS estrito pode ser oráculo diagnóstico **em protocolo separado e rotulado**, sem comparação inferencial com A. Se a pergunta científica exigir idle intencional, versionar B e exigir evidência: dois oráculos head-blocking e último-evento, taxa de WAIT, idle com elegíveis, pendências/drain e alterações no ranking das baselines sob o **mesmo B**. Ratificar em #3 após revisão independente do PR #21; até lá não declarar uma das alternativas ACCEPTED.
+
+## 5. Horizonte, drain, falhas e censura
+
+Todo cenário possui coorte definida **antes** de executar policies. Candidato: `H_a > 0` define janela de chegadas **[0, H_a)**; jobs com `arrival_tick == H_a` **não** entram na coorte. `H_e >= H_a` é limite de avaliação inclusive para **COMPLETION**; uma conclusão em `t == H_e` conta. Novas admissões START podem ocorrer após `H_a` no modo drain, mas somente enquanto `t < H_e`; não iniciar em `H_e`. Nunca incluir chegadas em/apos `H_a` ao drenar. `H_e`, `H_a` e budget são definidos por config experimental e **não** dependem do desempenho da policy.
+
+- **DRAIN (primário proposto):** após último arrival permitido, continuar executando/reagindo a COMPLETION até concluir todos os jobs factíveis da coorte ou atingir budget pré-fixado `B_drain > 0`, com `H_e = H_a + B_drain`. Se todos completam antes, `end_tick` é a última conclusão; integral de utilização/makespan usa intervalo observado [0,end_tick], não budget não utilizado. Caso timeout, o run é **FAILURE/TIMEOUT**, mantém jobs pendentes e censura; não publicar sua média de concluídos como estimando de coorte completa.
+- **FIXED_H:** parar em `H_e`, processar conclusões exatamente em H_e, sem START em H_e; serializar `job_phase_at_stop=READY` ou `RUNNING`; somente na projeção de relatório quando `run_status=CENSORED_FIXED_H` derivar os labels `QUEUED_AT_H` (READY) e `RUNNING_AT_H` (RUNNING) e tempos observados, sem alterar o enum canônico; nunca fabricar conclusão depois do cutoff. Métricas são de janela, não comensuráveis automaticamente com a média da coorte drenada.
+- **Sem progresso:** se existe READY elegível e policy retorna WAIT proibido/ação inválida, `ERROR`; se WAIT permitido em B mas não há próximo evento que mude o estado, `POLICY_STALL`; jobs inviáveis individualmente são `REJECTED_INFEASIBLE`; jobs válidos ainda em execução no deadline são `TIMEOUT` no episódio com `RUNNING` por job conforme modo. **Precedência:** COMPLETE em H_e precede cutoff; se todos terminaram, `COMPLETED/ALL_COMPLETED`; caso contrário, `CENSORED_FIXED_H/EVALUATION_CUTOFF` (FIXED_H) ou `TIMEOUT/DRAIN_BUDGET` (DRAIN). Erro/stall que ocorre antes do cutoff usa `t_stop` efetivo e `ERROR`/`POLICY_STALL` como status global. Registrar todos os jobs da coorte pré-gerada (inclusive FUTURE em falha antecipada) exatamente uma vez, sem converter falha em sucesso.
+- **Censura por job, não causa de episódio:** para job READY/RUNNING da coorte com chegada a e sem conclusão até `t_stop` (H_e no cutoff; instante efetivo da falha se stall/error antecipado), `observed_sojourn_lower_bound = t_stop - a`, `event_observed=false`; FUTURE cuja chegada ainda não ocorreu na parada permanece no denominador, sem bound negativo ou tempo observado fictício; REJECTED_INFEASIBLE é discriminado; para READY sem START, espera observada >= t_stop - a; para RUNNING, espera conhecida é `start-a`, duração de processamento é truncada. Sojourn/espera p50/p95 de jobs completados são **condicionais e rotulados**, não estimadores imparciais da coorte. Reportar completos, running, queued, rejeitados, stall, timeout, fração não iniciada, backlog e bounds por job. Métodos de sobrevivência exigem hipótese explícita sobre censura informativa.
+- **Métricas canônicas:** por job `sojourn=completion-arrival`, `wait=start-arrival`; `throughput=completed/window_length`, `utilization_r=integral(allocated_r dt)/(capacity_r*window_length)`; `makespan=last_completion-first_arrival` somente coorte completa drenada; fairness/idade máxima por coorte e overhead por decisão e por episódio; nenhuma métrica usa duração verdadeira como entrada de policy. Traces sem duração de janela positiva exigem tratamento explícito, não divisão por zero.
+
+### 5.1 Inferência, baselines estocásticas e pré-registro operacional — D-010/D-025 OPEN
+
+**Pergunta candidata, não ratificada:** medir o ganho **relativo típico por cenário/família** em workloads independentes e novos treinamentos; isso difere de economizar tempo absoluto total de espera ou de otimizar média global ponderada por número de jobs. Fixar antes de TEST os estratos k=1..S, distribuição-alvo, pesos `w_k>0` com `Σw_k=1` (igual peso por família é **sugestão** do PR #21), n_k cenários independentes i por estrato, K seeds de treinamento r independentes e E réplicas e de avaliação para políticas estocásticas. Cenários da análise log devem ter coorte **não vazia** `N_ki>=1`, especificação factível e médias positivas; cenários sem jobs podem ser usados como testes de corretude, mas não reclassificados/excluídos com base no desempenho. Estratos vazios, coortes inválidas, ausências de dados ou pesos indefinidos geram `PROTOCOL_FAILURE`, não reponderação pós-TEST. A grade planejada de cenários, treinamento, réplica e braços é fixa e deve ser **completa**: células não concluídas ou ausentes ficam contabilizadas como falhas, não passam para média filtrada.
+
+**Três RNGs disjuntas:** `scenario_seed` controla somente o trace exógeno imutável; `training_seed` controla treinamento/seleção evolutiva e **não** escolhe o cenário TEST; `policy_seed`/`evaluation_seed` controla decisões aleatórias durante a avaliação em cada réplica e. Para `random-valid`, `neural untrained` ou **B*** estocástica, gerar E réplicas de policy-seed sem escolher a melhor; capturar variação de A e de B*. Política aprendida determinística e B* determinística têm E=1 ou replay repetido apenas para aferir determinismo, **não** n independente. Uma mesma instância `m_B*(k,i,e)` reutilizada entre seeds r **não** é K replicações de B*: preservar esta dependência no IC. CRN entre braços só quando RNGs têm significado acoplável e mapeamento e pré-registrado; mesmo seed label não autoriza compartilhar estado do PRNG nem consumo de draws. Medir variância de B* estocástica na seleção em VAL; não comparar A contra sorteio único tratado como constante. O `trace_hash` deve permanecer idêntico independentemente de decisão/ordem de execução/draws extras das policies.
+
+**Estimando candidato para grade balanceada**, em que `m_A(k,i,r,e)` e `m_B*(k,i,e)` são as médias `(1/N_ki) Σ_j (completion_j-arrival_j)` sobre a **coorte inteira drenada** e ambas >0:
 ```text
-Scenarios / Seeds ──> Simulation Core <────> Policy (FIFO / SJF / Neural)
-                            │                           ↑
-                   events + telemetry            Evolution Engine
-                            │                           │
-                            └──> Evaluation Lab <──────┘
-                                     │
-                             results / snapshots
-                                     │
-                           (futuro) Safe Adapter
+ell(k,i,r,e) = ln[m_A(k,i,r,e) / m_B*(k,i,e)]
+theta = Σ_k w_k · (1/n_k)Σ_i · (1/K)Σ_r · (1/E)Σ_e ell(k,i,r,e)
+R_geo = exp(theta)
 ```
+E=1 se nenhuma policy comparada é estocástica; para deterministic B* com A estocástica, B* se repete no denominador como **mesma medida**. Repetições com mesma policy-seed e trace não geram observações independentes. **Unidade estatística**: novas coortes/scenarios e novos treinamentos (e, quando estocástica, novas trajetórias por policy RNG), não jobs nem decisões dentro de um trace. Se o objetivo mudar para ganho **absoluto/job-weighted**, definir e ratificar outro estimando *antes* de TEST; não mudar após observar dados.
 
-## Domínio inicial (proposta de contratos)
+**Contraste de utilidade (R22-04):** em dois cenários B* com médias (100,1) e A (50,2), `R_geo=sqrt(0.5×2)=1`, mas a razão das médias é `52/101≈0.515`. São hipóteses distintas. Reportar contraste secundário absoluto apenas como descritivo, rotulado e com denominador; não interpretá-lo como rejeição da H0 relativa. O estimando e o peso por família ainda dependem de decisão #2/#8.
 
-- `Job`: `id`, `arrival_time`, `cpu_units`, `memory_units`, `estimated_duration`, `actual_duration` (oculto da policy até conclusão), estado e carimbos de tempo.
-- `ResourcePool`: CPU/slots discretos, memória fixa; limites e disponibilidade.
-- `Observation`: tempo lógico, recursos livres, fila de jobs prontos e atributos permitidos, histórico agregado autorizado, máscara de ações possíveis.
-- `Action`: selecionar job elegível por identificador ou aguardar, se o protocolo permitir.
-- `Policy`: `reset(seed, config)`, `decide(observation)` e opcional `state`/serialização.
-- `Experiment`: cenário versionado, política, seeds, versão de código, métricas e artefatos.
+**Cross-classified dependence (R22-02/R22-03):** todos os treinamentos r avaliam os mesmos cenários i e compartilham os denominadores B*; seeds e de avaliação podem aparecer em múltiplos cenários/métodos. Células `r×i×e` **NÃO** são amostras independentes. Procedimento **candidato ao piloto, não IC validado:** resample de **blocos completos r** (cada r com todos os cenários e réplicas e), combinado com resample de **colunas completas de cenários i dentro de cada estrato k** (mesmos cenários para todos r/e e mesmos pares A/B*); para policies estocásticas, resample de **blocos de evaluation-seed e** preservando repetições e correlações da baseline compartilhada. Recalcular theta/R_geo na grade cruzada inteira por replicação; alternativa = modelo de efeitos cruzados com pressupostos e cobertura conferidos. Não usar bootstrap estratificado *aninhado por r com novos cenários independentes para cada r* nem pressupor que o procedimento acima tem cobertura correta quando K/E/n_k são pequenos. Simular cobertura sob nula, variância de cenários/treinamentos e B* estocástica no **piloto antes de TEST**, medir erro tipo I/IC, calibrar tamanho amostral/α/replicações e documentar método escolhido; se não houver cobertura, **DECISION_REQUIRED** para outro método/orçamento. Reamostrar jobs/decisões não cria unidades independentes.
 
-**Especificar invariantes antes de codificar:** nunca alocar recursos indisponíveis; um job não executa duas vezes; capacidade liberada ao concluir; tempos monotônicos; nenhum vazamento de `actual_duration` para políticas.
+**Baseline B* e controle de seleção:** em TRAIN/VAL listar apenas heurísticas **legais no mesmo action space A ou B**, incluindo parâmetros/fallback idênticos e budgets. A regra de VAL do [PR #21 atualizado](https://github.com/Gyliardson/genesis/pull/21) candidata é minimizar `Σ_k w_k mean_i(log m_B(k,i))` entre candidatas factíveis sob guardrails pré-registrados, desempatar por ordem congelada (FCFS-scanning→estimated-HRRN→SEJF→resource-fit), **sem** eleger baseline por TEST. Se heurística estocástica for elegível, agregar E réplicas seed-fixadas em VAL e preservar variância no protocolo; controles random-valid e untrained neural não entram automaticamente no conjunto competitivo B*, mas devem ser reportados. Se não houver B* legal/viável em VAL, não abrir TEST. Todas as baselines legais são reportadas no TEST para transparência, sem buscar nova vencedora.
 
-## Escopo da simulação M1
+**Regra confirmatória e guardrails ainda sujeitos a ratificação:** única H0/H1 e `δ_min` de utilidade devem ser aprovados em #2/#8; sugestão do PR #21: H0 `R_geo >= 1-δ_min` **OU** qualquer guardrail falha, H1 apenas se limite superior unilateral **ajustado** de R_geo < `1-δ_min` e todos os braços **necessários ao contraste primário** completam integralmente. `δ_min=5%` é exemplo, não limite aceito. Propor guardrails (definir antes de TEST classes/limites/denominadores/direção): `Δp95_wait = A-B* <= ε_wait`; `Δstarved_fraction = A-B* <= ε_starve` com cutoff de idade previamente congelado e denominador toda a coorte; `Δfairness_gap_or_worst_class <= ε_fair`; `ratio_overhead_p95 = A/B* <= 1+ε_overhead` e custo total CPU/RAM/treino sob budget absoluto. Usar **limites superiores unilaterais ajustados** para cada degradação, inclusive incerteza cruzada por cenário e treino; definir quando métricas são indefinidas (ex. coorte/classe vazia, overhead zero) sem imputações arbitrárias. Safety invalid action/stall/timeout de braços primários: **contagem zero nas células TEST confirmatórias** como gate, sem inferir risco populacional zero. Ajuste FWER candidato PR #21: `alpha_total=0.05`, `alpha_each=0.05/(1+G)` para objetivo + G guardrails quantitativos, ampliado por testes confirmatórios múltiplos; alternativa simultânea somente validada antes de TEST. Informar margens/IC separadamente, custos medidos end-to-end, hardware, stopping/budget e replicações; não declarar sucesso se só objetivo passa.
 
-- Um nó, jobs independentes, sem preempção e sem migração.
-- Jobs concorrentes se houver recursos; política decide admissões em eventos relevantes.
-- Recursos CPU e memória modelados como **capacidades discretas reservadas** (não simular uso percentual dinâmico no primeiro ciclo).
-- Durabilidade dos eventos, determinismo dos desempates e limite para episódios sem progresso.
-- Possibilidade de benchmark com execução repetida sem interface gráfica.
+**Falhas e missingness:** qualquer célula pré-planejada do contraste primário com `TIMEOUT`, `POLICY_STALL`, `ERROR`, censura, mismatch de trace ou ausência de resultado invalida a alegação H1; o relatório mantém *todas as células planejadas*, motivo, job outcomes, lower bounds, custo e falha por braço. Mesmo se B* falhar, não contar vitória adaptativa; marcar `INCONCLUSIVE/PROTOCOL_FAILURE`. Controles diagnósticos **externos à comparação primária** não acionam essa regra salvo se denunciam erro de validade da simulação. Análises de censura/pares completos são secundárias, **não resgatam** a H1. Não selecionar treino/seed, cenário ou estrato de sucesso pós-TEST.
 
-## Interface de redes neurais
+**Experimento mínimo antes de congelar D-025:** #2/#8 definem pergunta/estimando, n_k/K/E, pesos, delta, seleção/replicação B*, guardrails, FWER, orçamento e tratamento de falhas usando apenas VAL/piloto; simular erro tipo I e cobertura do procedimento de IC em grade cruzada com e sem baseline estocástica; só então considerar preregistration e TEST. **Nenhum teste estatístico ou ganho foi executado aqui; D-010/D-025 seguem OPEN.**
 
-MLP pequena com entradas normalizadas, observações mascaradas e saídas comparáveis entre jobs elegíveis. A representação de filas de tamanho variável é uma **questão aberta crítica**: candidatas incluem score por job baseado em atributos do job + estado global, janela top-K documentada ou arquitetura permutacional; evitar definir dimensão fixa arbitrária sem medir vieses.
+**Golden A:** pool (2,2), J1(a0,d3,req2/1), J2(a0,d1,req1/1). Scanning FCFS J1@0–3, J2@3–4; waits 0/3, sojourn 3/4; CPU integral 7 e MEM integral 4 em 4 ticks. **Golden B:** pool (1,1), J1@0–2, J2 chega em 2 e executa @2–3, sem WAIT adicional. **Golden C:** pool (1,1), J1@0–5, J2 READY, FIXED_H H_e=3: 0 completos, 1 RUNNING, 1 QUEUED; sojourn médio da coorte **indefinido/censurado**, utilização CPU=1.0 na janela. Referências e extensões na Issue #5.
 
-## Estrutura prevista
+## 6. Múltiplas policies, filas variáveis e isolamento
 
-```text
-src/genesis/
-  simulation/    # estado, eventos, recursos, geradores
-  policies/      # contrato, baselines, controlador neural
-  evolution/     # genomas, população, operadores
-  evaluation/    # métricas, benchmarks, reprodutibilidade
-  adapters/      # execução real futuramente
-tests/
-docs/
-.github/
-```
+O adaptador recebe `ready_jobs` com N variável inclusive N=0, produz `score(job, global_public_context)` se for modelo de ranking, filtra por máscara e escolhe o melhor score **finito**; desempates pelo par público (arrival,id). MLP compartilhada por job (`O(NP)`, P≈custo dos pesos) é primeira **hipótese** em D-008, não compromisso de código. Deep Sets agrega observações simetricamente e entra como alternativa se interação contextual justificar; top-K requer provar que não introduz truncamento danoso; attention/GRU são posteriores. Normalização só sobre TRAIN; N, classes e pressão fora da distribuição precisam ser exercitados.
 
-Pacotes e subdiretórios serão criados **quando houver implementação**, não como placeholders vazios.
+Todas as heurísticas, rede não treinada, aleatório-válido e policy treinada passam por **mesma** ObservationV0, máscara, safety, condições de erro e orçamento. FCFS scanning desempata por (arrival,id), SJF usa **estimated_duration**, random-valid escolhe uniformemente dentro da máscara com RNG da policy, fit usa demandas públicas. FCFS estrito incompatível em A permanece fora de B* principal. Nenhum modelo tem acesso a duração real, futuras chegadas, trace_hash, split, seed exógena, metrics evaluator ou estimadores calibrados em TEST.
 
-## Segurança de execução real (M4)
+**R22-07: proveniência e não interferência dos IDs/estimates.** IDs públicos devem ser gerados por ordem/codificação pública estável **independente de `actual_duration`, classe oculta, distribuição do split ou futuros**; auditar gerador e derivação de seeds (incluindo casos adversariais de ID correlacionado à truth). É lícito derivar `estimated_duration` de `actual_duration` **offline** no gerador para obter erros calibrados/viés, mas só o valor estimado, nunca a truth nem metadados privados, é projetado. **Relabeling oracle:** substituir todos os IDs por uma bijeção independente da truth sem alterar chegada, CPU, memória, estimativa ou estado público; para score único exigir mesma escolha de atributos após desfazer o relabeling. Se scores/arrival empatam e ID é tie-break público, a escolha do ID exato pode mudar: verificar equivalência da classe pública empatada, sem alegar igualdade que o contrato não garante. Outro oráculo injeta IDs derivados intencionalmente de `actual_duration`/split e deve **rejeitar a geração**; testar explicitamente normalização, tie-break, log público e manifestos de split. Alterar só verdade/futuro preservando atributos públicos e policy RNG deve preservar **distribuição da primeira ação**, mas diferenças após chegada/conclusão públicas são legais. Permutar ordem de entrada com IDs fixos **não** comprova ausência de ID leakage.
 
-- Apenas workloads de demonstração explicitamente autorizados em containers/VM isolados, quotas e timeouts.
-- `dry-run` e `shadow mode` antes de qualquer intervenção; nunca ajustar automaticamente serviços de produção.
-- Fallback determinístico, auditoria e desligamento manual; testar sobrecarga, deadlock/starvation e perda de observabilidade.
-- Nunca permitir que políticas emitam comandos shell arbitrários ou elevem privilégios.
+Os geradores de chegada, duração, recursos, estimativas e policy RNG usam streams derivados por hash criptográfico estável de namespace/split/scenario/replicate/stream, sem `hash()` do Python; geração completa antes da execução. Validação e TEST têm seeds/famílias reservadas e manifests distintos. Mesmo workload exógeno e mesmo protocolo de segurança para todas as policies. Versões dos contratos acompanham checkpoint serializado; nenhuma desserialização executa código arbitrário.
+
+## 7. Plano de verificação (não executado nesta missão documental)
+
+| Classe | Casos de aceite / oráculo | Evidência exigida na implementação |
+| --- | --- | --- |
+| Positivos | Golden A/B/C; duas dimensões de recursos; admissões consecutivas no mesmo tick; FULL DRAIN antes do budget; COMPLETE em H_e incluído | Event trace determinístico, métricas calculadas à mão, logs/hashes |
+| Negativos | ID duplicado, requisito zero/negativo/acima capacidade, estimate/actual inválidos, chegada negativa, clock regressivo, START duplo, double-release, RUNNING como READY, máscara desatualizada, WAIT proibido, unknown ID, NaN/Inf no scorer, job chegando exatamente em H_a, START em H_e, stall/timeout | Rejeição sem mutação parcial, motivo e outcomes explícitos |
+| Propriedades | Conservação por recurso após **toda** transição, 0<=allocated<=capacity; relógio monotônico; início>=chegada; conclusão=início+actual; monotonicidade do conjunto COMPLETED; READY count decresce em cada START no mesmo t | Property-based/geração determinística + contraexemplos minimizados/seeds |
+| Reproducibilidade | Ordem de inserção/permutação de jobs com IDs fixos **e** relabeling bijetivo de IDs independente de truth, distinguindo tie público de score único; replay seed/config/version em logs/hash iguais; policy RNG com draws adicionais não altera trace exógeno; ordem de comparação não altera workload | Manifesto + contraexemplo de ID derivado da truth, hashes, snapshots |
+| Não vazamento | Alterar só actual/future/seed privado mantendo observation pública não muda projeção e distribuição de ação inicial; estimate pode derivar offline da truth mas apenas estimate visível; ID relabeling, auditoria de log/normalizer/split e rejeição de ID codificando segredo | Testes de noninterference no projector, adapter, ID generator, tie-break e normalization |
+| Equivariância | `scores(πX)=πscores(X)`, ação por ID invariável em permutação; N=0/1/K/K+1/N grande; candidato ilegal com escore máximo nunca é selecionado | Propriedades de scorer/mask e stress de filas |
+| Avaliação | FIXED_H: testar round-trip JSON/schema de READY/RUNNING canônicos; rejeitar QUEUED_AT_H/RUNNING_AT_H como `job_phase_at_stop`; derivar labels apenas no relatório CENSORED_FIXED_H; COMPLETE exatamente em H_e permanece COMPLETED; DRAIN/ERROR não recebem labels `_AT_H`. Cada job FUTURE/READY/RUNNING/COMPLETED/REJECTED e run_status/stop_reason separados; Policy decide exception/no-return/decision-timeout; grade K×n_k×E de pares completa, RNG de B* estocástica, CI cruzado com cobertura simulada em VAL; guardrails/FCFS de protocolo e datasets isolados | Fixtures de células ausentes e denominadores, relatório de failures, piloto pré-TEST (NOT_RUN) |
+
+Os oráculos e propriedades validam **corretude do simulador**, não utilidade do scheduler nem aprendizado. CI de main/#21 falhou antes de causa diagnóstica estabelecida: falha operacional externa deve ser reportada separada de qualquer regressão específica.
+
+## 8. Implementação incremental dependente de gates (não executar agora)
+
+| Sequência | Issues | Entrega mínima, condição de entrada e saída |
+| --- | --- | --- |
+| Gate científico | [#2](https://github.com/Gyliardson/genesis/issues/2), [#3](https://github.com/Gyliardson/genesis/issues/3), [#4](https://github.com/Gyliardson/genesis/issues/4) | Resolver WAIT/FCFS, cutoff, erro, fairness/fitness provisória e findings PR #21; localizar primeira causa CI; registrar decisão revisada sem falsificar evidência |
+| 1 — Sim core | [#5](https://github.com/Gyliardson/genesis/issues/5) | **Dependências formais #3 e #4 (ver Issue #5):** contrato semântico e scaffold/CI validado para implementação; oráculos A/B/C, invariantes e replay primeiro. **Correctness** do core é gate distinto de benchmark; escolha SimPy vs DES D-006 depende de equivalência e profiling posteriores |
+| 2 — Workloads | [#6](https://github.com/Gyliardson/genesis/issues/6) | Generator exógeno/streams/versioned manifest; requer #3 e interface/core #5; testes noninterference |
+| 3 — Heurísticas | [#7](https://github.com/Gyliardson/genesis/issues/7) | FCFS-scanning, estimated-SJF, random-valid, fit; requer #3/#5/#6, todas mesmo protocolo, sem truth leakage |
+| 4 — Evaluation | [#8](https://github.com/Gyliardson/genesis/issues/8) | **Depende #5/#6/#7:** métricas/status e benchmark das heurísticas em traces exógenos idênticos (primeiro experimento válido, sem rede). **Gate de engine selection D-006 separado:** benchmark de profiling SimPy vs DES só depois de correção isomórfica por golden traces; não inferir validade estatística do EXP-001 de correção/profiling |
+| 5 — Neural | [#9](https://github.com/Gyliardson/genesis/issues/9) | Policy com N variável, mask, random weights, permutation/leakage tests; depende #3/#5/#8 e interface #7 |
+| 6 — Evolution | [#10](https://github.com/Gyliardson/genesis/issues/10) | GA pequeno versus random search, budgets/seeds e custo; depende #2/#8/#9, **não** treinar usando TEST |
+| 7 — Export/reload | [#11](https://github.com/Gyliardson/genesis/issues/11) | Checkpoint versionado/normalização + replay e rejeição de incompatibilidades; depende #9/#10 |
+| 8 — EXP-001 | [#12](https://github.com/Gyliardson/genesis/issues/12) | **Depende #7/#8/#10/#11 e #2/#3 ratificadas:** inferência confirmatória (terceiro gate independente) exige desenho K×n_k×E, IC cruzado/power validados, B* VAL, TEST congelado, guardrails/stop/budgets e tratamento de falhas. [#19](https://github.com/Gyliardson/genesis/issues/19) é **posterior** |
+
+**Próximo gate antes de aceitar os contratos restantes (D-017 já ratificada):** RE-REVIEW-01 do PR #21 já ocorreu em `3f446682473be872d681dfed9a229272d72ad4f4` (COMMENTED, não APPROVED); [RE-REVIEW-02 do PR #22](https://github.com/Gyliardson/genesis/pull/22#pullrequestreview-5615278317) revisou `255653bd9ea9e18f07fcfe386306dce5c4c5da6e`, apontando R22-10. Após este ajuste, solicitar re-review direcionado do novo HEAD e decisão explícita #3 para D-017 e cenários de WAIT, acordo de #2 sobre fitness/fairness e verificação de oráculos/cutoffs. Sem isso, somente propostas de documentação podem avançar. Toda arquitetura pode ser revisada conforme evidência; alteração material de action/observation/horizon exige schema version novo e repetição dos benchmarks afetados.
+
+## 9. Findings de revisão independente do PR #21 (exact-head)
+
+A revisão consultiva [REVIEW-01 do PR #21](https://github.com/Gyliardson/genesis/pull/21) analisou `2f29adf740c21f57190064db68f77f71d9c655f9` e apontou CHANGES_REQUIRED. **O PR #21 foi atualizado** para `3f446682473be872d681dfed9a229272d72ad4f4`: H1 única, FCFS-scanning candidato, estimando R_geo com grade K×n_k e crossed bootstrap, custos end-to-end e histórico público permitido como hipótese. Essas revisões são autoria do PR #21; a RE-REVIEW-01 posterior analisou esse SHA como COMMENTED, **sem APPROVED nem ratificação**. Esta missão não edita os três arquivos desse PR. Disposição na proposta de #3:
+
+| Finding | Integração em CONTRACT-01 | Gate remanescente / owner |
+| --- | --- | --- |
+| F01 BLOCKER (FCFS estrito/WAIT) | D-017 e oráculo HOL documentados; PR #21 atualizado propõe A/FCFS-scanning | D-017 aceita em #3 em 04/11/2026; ainda testar implementação e exigir exact-head review de #21/#22 |
+| F02 MAJOR (duas H1 conflitantes) | PR #21 atualizado mantém única H1 confirmatória e H2/H3 exploratórias; §5.1 alinha proposta | Ratificação #2/#8 e review de novo SHA ainda pendentes |
+| F03 MAJOR (razão agregada/IC/B*) | PR #21 propõe R_geo por cenário/família, B* VAL e crossed bootstrap; §5.1 trata replicações estocásticas e dependência cruzada R22 | D-025 OPEN, cobertura de IC e escolhas metodológicas não testadas |
+| F04 MAJOR (drain survivor bias) | PR #21 atualizado proíbe seleção de pares completos; outcomes separados no #22 | Gate de falhas/thresholds a ratificar; simulador NOT_RUN |
+| F05 MAJOR (negativos com WAIT) | PR #21 atualizado condiciona igualdade à trajetória única e START obrigatório | Teste negativo só após contrato A/B ratificado |
+| F06 MAJOR (cobertura #1/#2) | PR #21 atualizado sintetiza #9/#10/#19, sem construir algoritmos | Revisão de cobertura #1/#2 no novo SHA requerida |
+| F07 MINOR (backfilling/custo) | Scanning ≠ EASY; PR #21 atualizado explicita custos end-to-end | Benchmark overhead NOT_RUN |
+| F08 MINOR (bibliografia) | PR #21 atualizado distingue SoCC'25/preprint dezembro 2025/ACM janeiro 2026 | Re-review da fonte pertence PR #21 |
+| F09 NOTE (noninterference) | Schema Observation e testes de IDs relabeling/projeção/normalização/splits ampliados | Propriedades #5/#6/#9 NOT_RUN |
+
+### 9.1 Matriz de disposição REVIEW-02 — [#5613800187](https://github.com/Gyliardson/genesis/pull/22#pullrequestreview-5613800187)
+
+| Finding | Disposição documentada no PR #22 | Situação pendente |
+| --- | --- | --- |
+| **R22-01 BLOCKER** | §4 recomenda **A** como candidato mínimo, mantém **B** alternativa e C inválido; versionamento dos actions, oráculos HOL/último evento | **D-017 ACCEPTED** na #3, implementação ainda não validada |
+| **R22-02 MAJOR** | §5.1 especifica unidade-alvo e grade completa r×i×e, resampling por **blocos cruzados** e teste de cobertura antes de TEST | D-025 OPEN; IC não calibrado |
+| **R22-03 MAJOR** | §5.1 separa training/scenario/policy RNG, E repetições de baseline estocástica e variância de B* em VAL | E/CRN/budgets pré-registrar; NO RUN |
+| **R22-04 MAJOR** | §5.1 fixa pergunta candidata relativa, diferencia pooled ratio, define coorte não vazia, estrato vazio, B* VAL, δ, guardrails/IC/FWER | Utilidade/limiares/estimando requerem #2/#8; D-025 OPEN |
+| **R22-05 MAJOR** | §2/§3/§5 distinguem run_status/stop_reason de job_phase/event_observed, causality/t_stop e exception/no-return/wall timeout | D-021 OPEN, testes de execução NOT_RUN |
+| **R22-06 MAJOR** | §2 usa assinatura versionada `reset(policy_seed, public_config)` conforme PR #21 atualizado; A_v0/B_v1; histórico desabilitado no mínimo/opt-in versionado | Harmonização final & revisão exata PR #21/#22 pendentes |
+| **R22-07 MINOR** | §6/§7 exigem relabeling, teste de ID-truth adversarial, estimate offline e auditoria log/normalização/splits | Implementação das propriedades #5/#6/#9 NOT_RUN |
+| **R22-08 MINOR** | §8 explicita dependência formal #3 **e #4** de #5; separa correctness/profiling/benchmark/inferência | #4 causa CI ainda UNVERIFIED |
+| **R22-09 NOTE** | Preservados COMPLETE→ARRIVE, reservas atômicas, cutoffs, golden A/B/C, prevenção de survivor bias | Proposta documental, não simulador provado |
+
+**A matriz é disposição do autor, não revisão independente nova.** R22-01 não foi aceito nem fechado por ratificação; novo SHA invalida o parecer exact-head antigo para as regiões alteradas. Correções no PR #21 permanecem fora do ownership.
+
+**Impacto de revisão:** D-017 foi aceita como escolha de action space, mas ainda requer testes de implementação; D-021, D-010/D-025 e protocolo inferencial continuam sujeitos a revisão científica, decisão explícita e findings corrigidos. A aceitação de #3/EXP-001 não decorre deste documento, do comentário de reviewer, de CI ou do simples estado Draft. Nova revisão deve usar HEAD exato de cada PR relevante.
+
+## 10. Limites e segurança
+
+Nenhum simulador foi construído nem benchmark executado nesta missão. Simulador correto != policy útil; policy legal != policy generalizável; evolução entre gerações != aprendizagem/plasticidade durante a vida; controladora transferível não é controladora validada em workloads reais. Execução física é futuro com isolamento, shadow mode, quotas, fallback, audit e rollback; nenhuma policy pode emitir shell ou alterar limites. Os tradeoffs e status constam em [Decision Log](decisions.md); evidência atual é pesquisa/propostas, não desempenho empírico do GENESIS.
