@@ -1,8 +1,12 @@
 # Arquitetura mínima e contratos de domínio — CONTRACT-01
 
-> **STATUS: PROPOSED / DECISION_REQUIRED (revalidado em 2026-10-22).** Especificação candidata e reversível, **não** ratificação de interfaces, escolha de simulador ou implementação. Vinculada a [G-003](https://github.com/Gyliardson/genesis/issues/3) e à [síntese WAVE-01](https://github.com/Gyliardson/genesis/issues/3#issuecomment-6330212075). Os findings de revisão independente do [PR #21](https://github.com/Gyliardson/genesis/pull/21) precisam ser incorporados **antes** de tornar alguma decisão material ACCEPTED. A CI desse PR falhou sem primeira causa confirmada ([G-004](https://github.com/Gyliardson/genesis/issues/4)); não confundir com falha comprovada dos testes.
+> **STATUS: D-017 ACCEPTED (2026-11-04); demais contratos PROPOSED / DECISION_REQUIRED.** Especificação candidata e reversível, **não** ratificação de interfaces, escolha de simulador ou implementação. Vinculada a [G-003](https://github.com/Gyliardson/genesis/issues/3) e à [síntese WAVE-01](https://github.com/Gyliardson/genesis/issues/3#issuecomment-6330212075). Os findings de revisão independente do [PR #21](https://github.com/Gyliardson/genesis/pull/21) precisam ser incorporados **antes** de tornar alguma decisão material ACCEPTED. A CI desse PR falhou sem primeira causa confirmada ([G-004](https://github.com/Gyliardson/genesis/issues/4)); não confundir com falha comprovada dos testes.
 >
 > **Evidência:** RESEARCH-01 = documentação científica no PR #21; RESEARCH-02 = propostas e oráculos nas [Issues #5](https://github.com/Gyliardson/genesis/issues/5), [#6](https://github.com/Gyliardson/genesis/issues/6), [#8](https://github.com/Gyliardson/genesis/issues/8); RESEARCH-03 = matrizes nas [Issues #9](https://github.com/Gyliardson/genesis/issues/9), [#10](https://github.com/Gyliardson/genesis/issues/10), [#19](https://github.com/Gyliardson/genesis/issues/19). Todos os detalhes abaixo são **design proposals**, não resultados experimentais do GENESIS.
+
+## Registro da decisão D-017 (2026-11-04)
+
+O operador ratificou **ActionA_v0** na [Issue #3](https://github.com/Gyliardson/genesis/issues/3#issuecomment-6640438542): havendo READY admissível com capacidade livre simultânea de CPU e memória, a Policy escolhe `START(job_id)` da máscara, sem WAIT voluntário; admissões adicionais podem ocorrer no mesmo tick. Sem job elegível, o Core avança por evento exógeno ou encerra de modo auditável, sem antecipar informação futura. FCFS-scanning é baseline legal; FCFS estrito head-of-line é apenas diagnóstico em outro action space e não equivale a backfilling com reserva. **ActionB_v1** permanece futura proposta separada; não atribuir qualquer ganho/perda experimental a esta decisão. D-021 e D-020 seguem abertos/experimentais. Referências antigas a D-017 como OPEN nos históricos de review abaixo registram o estado em outubro de 2026, não anulam a ratificação.
 
 ## 1. Problema e menor arquitetura verificável
 
@@ -46,7 +50,7 @@ Jobs com demanda individual acima da capacidade são rejeitados **antes de admis
 | Contrato | Shape v0 / responsabilidade |
 | --- | --- |
 | `ObservationV0` | `schema_version`, `now_tick: Tick`, `cpu_capacity, cpu_free, memory_capacity, memory_free: int`, `ready_jobs: tuple[ReadyJobPublic,...]`, `eligible_job_ids: tuple[JobId,...]`, `wait_allowed: bool`. Ordenação canônica por `(arrival_tick,id)`; a policy nunca usa posição/ID como score/feature, salvo desempate externo |
-| `ActionA_v0` | **Protocolo A recomendado como candidato mínimo, NÃO ratificado:** somente `START(job_id: JobId)` se máscara elegível não vazia; caso contrário o Core avança sem consultar Policy. **B alternativo (não ratificado):** `ActionB_v1 = START(job_id) or WAIT`, sob limite comum e com schema novo; ADVANCE/TERMINATE são internos ao Core |
+| `ActionA_v0` | **D-017 ratificado pelo operador em 04/11/2026:** somente `START(job_id: JobId)` se máscara elegível não vazia; caso contrário o Core avança sem consultar Policy. **B alternativo (não ratificado):** `ActionB_v1 = START(job_id) or WAIT`, sob limite comum e com schema novo; ADVANCE/TERMINATE são internos ao Core |
 | `PolicyV0` | **Assinatura candidata única, compatível com PR #21 @ `3f446682`:** `reset(policy_seed: int, public_config: PublicPolicyConfig) -> None`; `decide(observation: ObservationV0) -> ActionA_v0` no A. Alternativa B exige interface `PolicyB_v1` com `ActionB_v1`. Estado interno separado do Core, RNG exógeno, split e trace; reset por episódio |
 | `PublicPolicyConfig` | `observation_schema`, `action_schema`, `protocol_id`, capacidades e escalas de features calibradas exclusivamente em TRAIN; sem `H_e`, split, trace hash, actual duration, scenario seed nem próximo evento. `policy_seed` é argumento separado para seu próprio RNG |
 | `ActionMaskA_v0` | IDs READY que cabem nas duas capacidades; `wait_allowed=false` no candidato A. `ObservationB_v1` requer máscara e limites de WAIT próprios, sempre revalidados por Safety independente da máscara pública |
@@ -72,11 +76,11 @@ Ordenação total do log: `(tick, phase[COMPLETE,ARRIVE,ADMIT/START,ADVANCE/TERM
 
 ## 4. Conflito material — WAIT versus FCFS estrito
 
-**DECISION_REQUIRED: D-017.** A máscara obrigatória `START quando existe job factível` implica política work-conserving relativamente ao conjunto factível, mas **não** permite FCFS estrito head-of-line: se o primeiro READY não couber e um posterior couber, FCFS estrito precisa ociosidade voluntária. Não rotular scanning/backfill como FCFS estrito, nem comparar protocolos diferentes como se fossem iguais.
+**ACCEPTED: D-017 / ActionA_v0, 04/11/2026** ([ratificação na Issue #3](https://github.com/Gyliardson/genesis/issues/3#issuecomment-6640438542)). A máscara obrigatória `START quando existe job factível` implica política work-conserving relativamente ao conjunto factível, mas **não** permite FCFS estrito head-of-line: se o primeiro READY não couber e um posterior couber, FCFS estrito precisa ociosidade voluntária. Não rotular scanning/backfill como FCFS estrito, nem comparar protocolos diferentes como se fossem iguais.
 
 | Alternativa | Viabiliza FCFS estrito? | Comparabilidade e riscos |
 | --- | --- | --- |
-| **A (candidata menor MVP):** START obrigatório quando existe elegível; avanço forçado caso contrário; baseline `FCFS-scanning` | **Não**; FCFS head-of-line só como diagnóstico separado, não baseline principal legal | Espaço pequeno, progresso limitado, menos reward hacking; risco de excluir comportamento estratégico de ociosidade; medir starvation de backfill |
+| **A (ACCEPTED para o MVP inicial):** START obrigatório quando existe elegível; avanço forçado caso contrário; baseline `FCFS-scanning` | **Não**; FCFS head-of-line só como diagnóstico separado, não baseline principal legal | Espaço pequeno, progresso limitado, menos reward hacking; risco de excluir comportamento estratégico de ociosidade; medir starvation de backfill |
 | **B:** WAIT voluntário disponível **para todas** as policies com elegíveis; um WAIT consome o timestamp e avança a evento exógeno futuro; falha no último evento; teto de espera/ociosidade/fairness e mesmo fallback | Sim | Captura idle estratégico, porém aumenta ação/censura e risco de stall; requer comparações reexecutadas, métricas e controles mais fortes |
 | **C:** exceção de WAIT apenas para FCFS estrito | Sim, mas só por privilégio | **Rejeitar para comparação principal:** action spaces diferentes invalidam paridade informacional/operacional |
 
@@ -84,7 +88,7 @@ Ordenação total do log: `(tick, phase[COMPLETE,ARRIVE,ADMIT/START,ADVANCE/TERM
 
 **Terminologia:** `FCFS-scanning` significa **first eligible fit** em ordem (arrival,id), **sem reserva para o head**; não é EASY/conservative backfilling. A regra pode causar starvation do head. O custo a medir é **end-to-end** (construção da máscara, scan, validação, inferência/logging), não apenas O(1)/O(N) do critério.
 
-**R22-01:** **Protocolo A é o candidato mínimo recomendado**, ainda sujeito à ratificação explícita na Issue #3; **B é alternativa** caso idle estratégico/FCFS HOL tenha justificativa científica, com WAIT para todas as policies, oráculos e schemas versionados. A recomendação não eleva D-017 para ACCEPTED.
+**R22-01:** **Protocolo A foi ratificado pelo operador em 04/11/2026** na Issue #3; **B é alternativa** caso idle estratégico/FCFS HOL tenha justificativa científica, com WAIT para todas as policies, oráculos e schemas versionados. A ratificação de D-017 não valida empiricamente o Core nem ratifica outras decisões.
 
 **Recomendação para revisão, não aprovação:** A como primeiro protocolo de corretude + scanning-FCFS, SJF-estimado, random-valid e fit com **mesma máscara**. FCFS estrito pode ser oráculo diagnóstico **em protocolo separado e rotulado**, sem comparação inferencial com A. Se a pergunta científica exigir idle intencional, versionar B e exigir evidência: dois oráculos head-blocking e último-evento, taxa de WAIT, idle com elegíveis, pendências/drain e alterações no ranking das baselines sob o **mesmo B**. Ratificar em #3 após revisão independente do PR #21; até lá não declarar uma das alternativas ACCEPTED.
 
@@ -164,7 +168,7 @@ Os oráculos e propriedades validam **corretude do simulador**, não utilidade d
 | 7 — Export/reload | [#11](https://github.com/Gyliardson/genesis/issues/11) | Checkpoint versionado/normalização + replay e rejeição de incompatibilidades; depende #9/#10 |
 | 8 — EXP-001 | [#12](https://github.com/Gyliardson/genesis/issues/12) | **Depende #7/#8/#10/#11 e #2/#3 ratificadas:** inferência confirmatória (terceiro gate independente) exige desenho K×n_k×E, IC cruzado/power validados, B* VAL, TEST congelado, guardrails/stop/budgets e tratamento de falhas. [#19](https://github.com/Gyliardson/genesis/issues/19) é **posterior** |
 
-**Próximo gate antes de ratificação:** RE-REVIEW-01 do PR #21 já ocorreu em `3f446682473be872d681dfed9a229272d72ad4f4` (COMMENTED, não APPROVED); [RE-REVIEW-02 do PR #22](https://github.com/Gyliardson/genesis/pull/22#pullrequestreview-5615278317) revisou `255653bd9ea9e18f07fcfe386306dce5c4c5da6e`, apontando R22-10. Após este ajuste, solicitar re-review direcionado do novo HEAD e decisão explícita #3 para D-017 e cenários de WAIT, acordo de #2 sobre fitness/fairness e verificação de oráculos/cutoffs. Sem isso, somente propostas de documentação podem avançar. Toda arquitetura pode ser revisada conforme evidência; alteração material de action/observation/horizon exige schema version novo e repetição dos benchmarks afetados.
+**Próximo gate antes de aceitar os contratos restantes (D-017 já ratificada):** RE-REVIEW-01 do PR #21 já ocorreu em `3f446682473be872d681dfed9a229272d72ad4f4` (COMMENTED, não APPROVED); [RE-REVIEW-02 do PR #22](https://github.com/Gyliardson/genesis/pull/22#pullrequestreview-5615278317) revisou `255653bd9ea9e18f07fcfe386306dce5c4c5da6e`, apontando R22-10. Após este ajuste, solicitar re-review direcionado do novo HEAD e decisão explícita #3 para D-017 e cenários de WAIT, acordo de #2 sobre fitness/fairness e verificação de oráculos/cutoffs. Sem isso, somente propostas de documentação podem avançar. Toda arquitetura pode ser revisada conforme evidência; alteração material de action/observation/horizon exige schema version novo e repetição dos benchmarks afetados.
 
 ## 9. Findings de revisão independente do PR #21 (exact-head)
 
@@ -172,7 +176,7 @@ A revisão consultiva [REVIEW-01 do PR #21](https://github.com/Gyliardson/genesi
 
 | Finding | Integração em CONTRACT-01 | Gate remanescente / owner |
 | --- | --- | --- |
-| F01 BLOCKER (FCFS estrito/WAIT) | D-017 e oráculo HOL documentados; PR #21 atualizado propõe A/FCFS-scanning | D-017 continua OPEN em #3; novo exact-head review de #21/#22 |
+| F01 BLOCKER (FCFS estrito/WAIT) | D-017 e oráculo HOL documentados; PR #21 atualizado propõe A/FCFS-scanning | D-017 aceita em #3 em 04/11/2026; ainda testar implementação e exigir exact-head review de #21/#22 |
 | F02 MAJOR (duas H1 conflitantes) | PR #21 atualizado mantém única H1 confirmatória e H2/H3 exploratórias; §5.1 alinha proposta | Ratificação #2/#8 e review de novo SHA ainda pendentes |
 | F03 MAJOR (razão agregada/IC/B*) | PR #21 propõe R_geo por cenário/família, B* VAL e crossed bootstrap; §5.1 trata replicações estocásticas e dependência cruzada R22 | D-025 OPEN, cobertura de IC e escolhas metodológicas não testadas |
 | F04 MAJOR (drain survivor bias) | PR #21 atualizado proíbe seleção de pares completos; outcomes separados no #22 | Gate de falhas/thresholds a ratificar; simulador NOT_RUN |
@@ -186,7 +190,7 @@ A revisão consultiva [REVIEW-01 do PR #21](https://github.com/Gyliardson/genesi
 
 | Finding | Disposição documentada no PR #22 | Situação pendente |
 | --- | --- | --- |
-| **R22-01 BLOCKER** | §4 recomenda **A** como candidato mínimo, mantém **B** alternativa e C inválido; versionamento dos actions, oráculos HOL/último evento | **D-017 OPEN / DECISION_REQUIRED** na #3; não ACCEPTED |
+| **R22-01 BLOCKER** | §4 recomenda **A** como candidato mínimo, mantém **B** alternativa e C inválido; versionamento dos actions, oráculos HOL/último evento | **D-017 ACCEPTED** na #3, implementação ainda não validada |
 | **R22-02 MAJOR** | §5.1 especifica unidade-alvo e grade completa r×i×e, resampling por **blocos cruzados** e teste de cobertura antes de TEST | D-025 OPEN; IC não calibrado |
 | **R22-03 MAJOR** | §5.1 separa training/scenario/policy RNG, E repetições de baseline estocástica e variância de B* em VAL | E/CRN/budgets pré-registrar; NO RUN |
 | **R22-04 MAJOR** | §5.1 fixa pergunta candidata relativa, diferencia pooled ratio, define coorte não vazia, estrato vazio, B* VAL, δ, guardrails/IC/FWER | Utilidade/limiares/estimando requerem #2/#8; D-025 OPEN |
@@ -198,7 +202,7 @@ A revisão consultiva [REVIEW-01 do PR #21](https://github.com/Gyliardson/genesi
 
 **A matriz é disposição do autor, não revisão independente nova.** R22-01 não foi aceito nem fechado por ratificação; novo SHA invalida o parecer exact-head antigo para as regiões alteradas. Correções no PR #21 permanecem fora do ownership.
 
-**Impacto de revisão:** D-017, D-021, D-010/D-025 e protocolo inferencial continuam sujeitos a revisão científica, decisão explícita e findings corrigidos. A aceitação de #3/EXP-001 não decorre deste documento, do comentário de reviewer, de CI ou do simples estado Draft. Nova revisão deve usar HEAD exato de cada PR relevante.
+**Impacto de revisão:** D-017 foi aceita como escolha de action space, mas ainda requer testes de implementação; D-021, D-010/D-025 e protocolo inferencial continuam sujeitos a revisão científica, decisão explícita e findings corrigidos. A aceitação de #3/EXP-001 não decorre deste documento, do comentário de reviewer, de CI ou do simples estado Draft. Nova revisão deve usar HEAD exato de cada PR relevante.
 
 ## 10. Limites e segurança
 
