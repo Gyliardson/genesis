@@ -8,8 +8,12 @@ are executed. Policies receive only immutable public observations.
 from __future__ import annotations
 
 import heapq
+import logging
 from dataclasses import dataclass
 from typing import Protocol
+
+
+_log = logging.getLogger(__name__)
 
 
 def _integer(name: str, value: int, minimum: int) -> None:
@@ -247,6 +251,8 @@ def simulate(
     try:
         policy.reset(policy_seed, config)
     except Exception:
+        # The Policy is untrusted: report a static message without exposing its error text.
+        _log.error("Policy reset failed; exception details omitted")
         return result("ERROR", "DECIDE_EXCEPTION")
 
     while True:
@@ -313,6 +319,8 @@ def simulate(
             try:
                 action = policy.decide(obs)
             except Exception:
+                # Avoid printing arbitrary policy exceptions (e.g. secrets) in shared logs.
+                _log.error("Policy decision failed; exception details omitted")
                 return result("ERROR", "DECIDE_EXCEPTION")
             if action is None:
                 return result("ERROR", "NO_RETURN")
