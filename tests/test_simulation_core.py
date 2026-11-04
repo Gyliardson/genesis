@@ -33,13 +33,14 @@ def integrated_resource_ticks(events) -> tuple[int, int]:
     """Integrate the Core's actual post-transition resource state over event intervals."""
     assert [event.sequence for event in events] == list(range(len(events)))
     assert [event.tick for event in events] == sorted(event.tick for event in events)
-    return (
+    integrals = tuple(
         sum(
             (next_event.tick - event.tick) * getattr(event, dimension)
             for event, next_event in zip(events, events[1:])
         )
         for dimension in ("cpu_allocated", "memory_allocated")
     )
+    return integrals
 
 
 def assert_event_conservation(result, specs, capacity) -> None:
