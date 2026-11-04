@@ -19,7 +19,7 @@ padrões conhecidos nos textos remotos não tiveram matches. **PUB-01
 permanece PARTIAL:** logs/annotations históricos inacessíveis,
 refs ocultas, anexos externos, análise semântica e direitos não
 foram integralmente auditados. A licença Apache-2.0 foi aprovada,
-mas titularidade/atribuição continuam pendentes. `main` segue
+e o mantenedor confirmou direitos sobre o código/documentação atualmente incluídos ([registro](https://github.com/Gyliardson/genesis/issues/23#issuecomment-6634429346)); a revisão independente de atribuições/`NOTICE` continua pendente. `main` segue
 `protected=false`, com regras privadas 403 por limitação do
 plano; canal confidencial PUB-06 ainda UNVERIFIED.
 
@@ -28,6 +28,8 @@ plano; canal confidencial PUB-06 ainda UNVERIFIED.
 PREPUBLIC_GATE=FAIL; não foi autorizada mudança de visibilidade.
 Os parágrafos abaixo que descrevem bloqueios de CI em 23/10/2026
 representam evidências históricas, não o estado de 04/11/2026.**
+
+**Inventário limitado de direitos (PUB-02):** na árvore do PR revisada em 04/11/2026, os 29 arquivos rastreados são texto, código e metadados de engenharia; não foram identificados datasets, imagens, arquivos binários de terceiros ou conteúdos vendorizados. O wheel GENESIS não incorpora `pathspec` (MPL-2.0), que é dependência de build da CI, nem outras bibliotecas de terceiros. Os 47 commits alcançáveis nas branches visíveis foram atribuídos à conta do mantenedor, o que não comprova individualmente a autoria do conteúdo. Não foi identificado aviso de terceiro incorporado que obrigue um `NOTICE` adicional **neste inventário**; a necessidade deve ser reavaliada se ocorrer distribuição de código modificado de terceiros, assets, dados, dependências empacotadas ou contribuições futuras. **PUB-02_OPERATOR_RIGHTS_ATTESTATION=PASS; PUB-02=PARTIAL** enquanto persistir revisão independente de atribuições. Nenhum desses registros autoriza tornar o repositório público.
 
 **Esta é uma política de preparação, não uma autorização de divulgação.** O registro de gates e evidências atuais permanece na [Issue #23](https://github.com/Gyliardson/genesis/issues/23). Não declarar `PREPUBLIC_GATE=PASS` apenas porque um PR foi criado.
 
