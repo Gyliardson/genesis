@@ -1,6 +1,7 @@
 """Independent hand-calculated and negative oracles for the simulation reference engine."""
 
 from dataclasses import FrozenInstanceError, asdict
+from itertools import pairwise
 from random import Random
 
 import pytest
@@ -36,7 +37,7 @@ def integrated_resource_ticks(events) -> tuple[int, int]:
     integrals = tuple(
         sum(
             (next_event.tick - event.tick) * getattr(event, dimension)
-            for event, next_event in zip(events, events[1:])
+            for event, next_event in pairwise(events)
         )
         for dimension in ("cpu_allocated", "memory_allocated")
     )
