@@ -1,6 +1,7 @@
 """Independent hand-calculated and negative oracles for the simulation reference engine."""
 
 from dataclasses import FrozenInstanceError, asdict
+from random import Random
 
 import pytest
 
@@ -28,6 +29,44 @@ def outcomes(result):
     return {j.id: j for j in result.jobs}
 
 
+def integrated_resource_ticks(events) -> tuple[int, int]:
+    """Integrate the Core's actual post-transition resource state over event intervals."""
+    assert [event.sequence for event in events] == list(range(len(events)))
+    assert [event.tick for event in events] == sorted(event.tick for event in events)
+    return (
+        sum(
+            (next_event.tick - event.tick) * getattr(event, dimension)
+            for event, next_event in zip(events, events[1:])
+        )
+        for dimension in ("cpu_allocated", "memory_allocated")
+    )
+
+
+def assert_event_conservation(result, specs, capacity) -> None:
+    """Independently replay log transitions without relying on Core's private state."""
+    truth = {spec.id: spec for spec in specs}
+    started = set()
+    finished = set()
+    running = set()
+    for event in result.events:
+        if event.kind == "START":
+            assert event.job_id not in started
+            assert event.job_id in truth
+            started.add(event.job_id)
+            running.add(event.job_id)
+        elif event.kind == "COMPLETE":
+            assert event.job_id in running
+            assert event.job_id not in finished
+            running.remove(event.job_id)
+            finished.add(event.job_id)
+        assert event.cpu_allocated == sum(truth[job_id].cpu_units for job_id in running)
+        assert event.memory_allocated == sum(truth[job_id].memory_units for job_id in running)
+        assert 0 <= event.cpu_allocated <= capacity.cpu_units
+        assert 0 <= event.memory_allocated <= capacity.memory_units
+    assert {j.id for j in result.jobs if j.phase == "RUNNING"} == running
+    assert {j.id for j in result.jobs if j.phase == "COMPLETED"} == finished
+
+
 def test_golden_a_contention_and_resource_integrals() -> None:
     result = simulate(
         (job("J2", 0, 1, 1, 1), job("J1", 0, 2, 1, 3)),
@@ -44,8 +83,12 @@ def test_golden_a_contention_and_resource_integrals() -> None:
         result.jobs, sorted((job("J1", 0, 2, 1, 3), job("J2", 0, 1, 1, 1)), key=lambda s: (s.arrival_tick, s.id))
     )]
     assert sojourn == [3, 4]
-    assert 2 * 3 + 1 * 1 == 7  # CPU resource-ticks in four time ticks.
-    assert 1 * 3 + 1 * 1 == 4  # Memory resource-ticks.
+    assert integrated_resource_ticks(result.events) == (7, 4)
+    assert_event_conservation(
+        result,
+        (job("J1", 0, 2, 1, 3), job("J2", 0, 1, 1, 1)),
+        Capacity(2, 2),
+    )
     assert result.cpu_allocated_at_stop == result.memory_allocated_at_stop == 0
 
 
@@ -86,6 +129,12 @@ def test_golden_c_fixed_h_preserves_all_censored_jobs() -> None:
     ]
     assert not [e for e in result.events if e.kind == "COMPLETE"]
     assert result.cpu_allocated_at_stop == 1
+    assert integrated_resource_ticks(result.events) == (3, 3)
+    assert_event_conservation(
+        result,
+        (job("J1", 0, 1, 1, 5), job("J2", 0, 1, 1, 1)),
+        Capacity(1, 1),
+    )
 
 
 def test_head_of_line_discriminator_follows_fcfs_scanning() -> None:
@@ -176,6 +225,7 @@ def test_public_projection_excludes_true_duration_and_future_state() -> None:
     simulate(changed, Capacity(1, 1), b, policy_seed=12)
     assert a.observations[0] == b.observations[0]
     assert a.public_config == b.public_config
+    assert a.public_config.action_schema == "ActionA_v0"
     obs = a.observations[0]
     assert obs.eligible_job_ids == ("J",)
     assert obs.wait_allowed is False
@@ -210,6 +260,40 @@ def test_invalid_actions_fail_closed_without_reserving(action, reason) -> None:
     assert outcomes(result)["A"].phase == "READY"
     assert result.cpu_allocated_at_stop == result.memory_allocated_at_stop == 0
     assert not [e for e in result.events if e.kind == "START"]
+
+
+class EqualityBomb:
+    def __init__(self):
+        self.comparisons = 0
+
+    def __eq__(self, other):
+        self.comparisons += 1
+        raise AssertionError("Action payload must never execute custom comparison code")
+
+
+def test_untrusted_action_payload_rejected_without_running_equality() -> None:
+    bomb = EqualityBomb()
+    result = simulate(
+        (job("A", 0, 1, 1, 1),),
+        Capacity(1, 1),
+        InvalidActionPolicy(StartA_v0(bomb)),
+    )
+    assert result.run_status == "ERROR"
+    assert result.stop_reason == "INVALID_ACTION"
+    assert bomb.comparisons == 0
+    assert outcomes(result)["A"].phase == "READY"
+    assert not [event for event in result.events if event.kind == "START"]
+
+
+@pytest.mark.parametrize("payload", [True, 1, ["A"], None])
+def test_wrong_runtime_job_id_types_fail_closed(payload) -> None:
+    result = simulate(
+        (job("A", 0, 1, 1, 1),),
+        Capacity(1, 1),
+        InvalidActionPolicy(StartA_v0(payload)),
+    )
+    assert result.run_status == "ERROR"
+    assert result.stop_reason == "INVALID_ACTION"
 
 
 class ExplodingPolicy(FCFSScanningPolicy):
@@ -280,6 +364,45 @@ def test_duplicate_ids_and_invalid_capacity_are_rejected() -> None:
         Capacity(True, 1)
     with pytest.raises(ValueError):
         Capacity(1, -1)
+
+
+@pytest.mark.parametrize("scenario_seed", range(64))
+def test_random_small_traces_replay_resource_integrals_and_progress(scenario_seed) -> None:
+    """Deterministic property probes over competing CPU/memory traces, including rejects."""
+    rng = Random(scenario_seed)
+    capacity = Capacity(rng.randint(1, 4), rng.randint(1, 4))
+    specs = tuple(
+        job(
+            f"J{i:02d}",
+            rng.randrange(7),
+            rng.randint(1, capacity.cpu_units + 1),
+            rng.randint(1, capacity.memory_units + 1),
+            rng.randint(1, 6),
+            estimate=rng.randint(1, 6),
+        )
+        for i in range(rng.randint(4, 18))
+    )
+    first = simulate(specs, capacity, FCFSScanningPolicy(), policy_seed=17)
+    replay = simulate(tuple(reversed(specs)), capacity, FCFSScanningPolicy(), policy_seed=17)
+    assert first == replay
+    assert first.run_status == "COMPLETED"
+    assert all(j.phase in {"COMPLETED", "REJECTED_INFEASIBLE"} for j in first.jobs)
+    assert_event_conservation(first, specs, capacity)
+
+    by_id = {spec.id: spec for spec in specs}
+    completed = [outcome for outcome in first.jobs if outcome.phase == "COMPLETED"]
+    independent_integrals = (
+        sum(
+            by_id[outcome.id].cpu_units * (outcome.completed_at - outcome.started_at)
+            for outcome in completed
+        ),
+        sum(
+            by_id[outcome.id].memory_units * (outcome.completed_at - outcome.started_at)
+            for outcome in completed
+        ),
+    )
+    assert integrated_resource_ticks(first.events) == independent_integrals
+    assert first.cpu_allocated_at_stop == first.memory_allocated_at_stop == 0
 
 
 def test_cutoff_rejects_input_at_or_after_boundary() -> None:

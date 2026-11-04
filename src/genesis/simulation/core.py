@@ -2,7 +2,8 @@
 
 Experimental M1 implementation. D-017 fixes the action space; event/horizon,
 error/fallback and engine-choice ADRs remain independently reviewable. No real jobs
-are executed. Policies receive only immutable public observations.
+are executed. Policies receive only immutable public observations via the intended API.
+The in-process Python policy is trusted code, not a secrecy or execution sandbox.
 """
 
 from __future__ import annotations
@@ -80,6 +81,7 @@ class ObservationV0:
 class PublicPolicyConfig:
     protocol_id: str
     observation_schema: str
+    action_schema: str
     cpu_capacity: int
     memory_capacity: int
 
@@ -241,6 +243,7 @@ def simulate(
     config = PublicPolicyConfig(
         protocol_id="ActionA_v0",
         observation_schema="ObservationV0",
+        action_schema="ActionA_v0",
         cpu_capacity=capacity.cpu_units,
         memory_capacity=capacity.memory_units,
     )
@@ -316,7 +319,13 @@ def simulate(
                 return result("ERROR", "DECIDE_EXCEPTION")
             if action is None:
                 return result("ERROR", "NO_RETURN")
-            if type(action) is not StartA_v0 or action.job_id not in eligible:
+            # Reject an arbitrary payload *before* invoking its equality methods.
+            # The dataclass annotation alone is not a runtime type guard.
+            if (
+                type(action) is not StartA_v0
+                or type(action.job_id) is not str
+                or action.job_id not in eligible
+            ):
                 return result("ERROR", "INVALID_ACTION")
             spec = by_id[action.job_id]
             state = runtime[spec.id]
