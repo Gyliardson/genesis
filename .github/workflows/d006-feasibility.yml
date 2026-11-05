@@ -1,0 +1,94 @@
+name: D-006 single bounded feasibility pilot (PR 26 only)
+
+# Trigger once on addition of THIS dedicated workflow; later adapter commits do not
+# re-run measurements. No pull_request_target, secrets, elevated token or private runners.
+on:
+  pull_request:
+    types: [opened, synchronize]
+    branches: [feat/g005-deterministic-core-action-a]
+    paths:
+      - ".github/workflows/d006-feasibility.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d006-feasibility-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  feasibility-only:
+    if: >-
+      github.event.pull_request.number == 26 &&
+      github.event.pull_request.head.repo.full_name == 'Gyliardson/genesis' &&
+      github.event.pull_request.head.ref == 'research/d006-simpy-evidence'
+    runs-on: ubuntu-24.04
+    # Total runner cap 30 minutes, including correctness setup and artifact publication.
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+      EVENT_BASE: ${{ github.event.pull_request.base.sha }}
+      EXPECTED_BASE: "f39ed8a2cf10febc8affc0525c29e4a6a25b9be7"
+      AUTHORIZED_PARENT: "9e2594286cd0e7f479bdc4492dd4f48fb275c7d4"
+      D006_ORACLE_MODE: dual
+      PYTHONPATH: "src:benchmarks/d006"
+    steps:
+      - name: Checkout exact pilot candidate without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Setup Python 3.11
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+      - name: Validate single authorized revision and isolated environment
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = x86_64
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          test "$(git rev-parse HEAD^)" = "$AUTHORIZED_PARENT"
+          test "$EVENT_BASE" = "$EXPECTED_BASE"
+          python -c 'import sys; assert sys.version_info[:2] == (3, 11)'
+          printf 'D006_PILOT_SHA=%s\nD006_AUTHORIZED_PARENT=%s\nD006_CORE_BASE=%s\n' "$EXPECTED_HEAD" "$AUTHORIZED_PARENT" "$EXPECTED_BASE"
+          python --version
+          uname -a
+      - name: Install research-only hash-pinned SimPy (no dependencies)
+        run: |
+          set -euo pipefail
+          python -m pip --isolated install --no-input --no-deps --only-binary=:all: --require-hashes --index-url https://pypi.org/simple -r benchmarks/d006/requirements-research.txt
+          python -c 'import simpy; assert simpy.__version__ == "4.1.2"; print("SIMPY_VERSION=" + simpy.__version__)'
+      - name: Execute bounded paired AB-BA feasibility and preserve every attempt
+        run: |
+          set -uo pipefail
+          output="benchmarks/d006/feasibility_pr26_${EXPECTED_HEAD:0:12}.jsonl"
+          console="benchmarks/d006/feasibility_pr26_console.log"
+          status="benchmarks/d006/feasibility_pr26_status.txt"
+          # 27m outer cap leaves time for uploading even on timeout.
+          # Internal Python caps: 1800s global, 60s per child and 2GiB RLIMIT_AS.
+          timeout --signal=TERM --kill-after=10s 27m python benchmarks/d006/feasibility_pilot.py --expected-head "$EXPECTED_HEAD" --output "$output" > "$console" 2>&1
+          result=$?
+          printf 'candidate_sha=%s\nexit_code=%s\noutput=%s\n' "$EXPECTED_HEAD" "$result" "$output" > "$status"
+          if test -f "$output"; then
+            sha256sum "$output" | tee -a "$status"
+            wc -l "$output" | tee -a "$status"
+          else
+            echo "raw_output_missing=1" | tee -a "$status"
+          fi
+          tail -n 70 "$console" || true
+          exit "$result"
+      - name: Preserve raw pilot data, full console and status even on failures
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d006-feasibility-pr26-${{ github.event.pull_request.head.sha }}
+          path: |
+            benchmarks/d006/feasibility_pr26_*.jsonl
+            benchmarks/d006/feasibility_pr26_console.log
+            benchmarks/d006/feasibility_pr26_status.txt
+          if-no-files-found: warn
+          retention-days: 30
