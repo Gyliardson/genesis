@@ -15,7 +15,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from random import Random
 
-from genesis.simulation.core import Capacity, JobSpecPrivate
+from genesis.simulation.core import JobSpecPrivate
 
 SCHEMA = "D006_Exogenous_v2"
 JOBS_SCHEMA = "D006_Jobs_v2"
@@ -118,6 +118,12 @@ def arrival_rate(cell: Cell) -> float:
     return RHO[cell.load] / offered_work_per_job(cell)
 
 
+def exogenous_cell(cell: Cell) -> dict[str, object]:
+    # Experiment policy is deliberately excluded from workload-generation RNG.
+    return {key: getattr(cell, key) for key in
+            ("id", "n", "cpu", "memory", "load", "family")}
+
+
 def substream(cell: Cell, workload_seed: int, domain: str, index: int) -> Random:
     if type(workload_seed) is not int or workload_seed < 0:
         raise ValueError("workload seed must be a nonnegative integer")
@@ -126,7 +132,7 @@ def substream(cell: Cell, workload_seed: int, domain: str, index: int) -> Random
     if domain not in {"arrival", "demands", "duration_true", "duration_est"}:
         raise ValueError("unrecognized PRNG domain")
     descriptor = {
-        "schema": SCHEMA, "cell": asdict(cell),
+        "schema": SCHEMA, "cell": exogenous_cell(cell),
         "workload_seed": workload_seed, "domain": domain, "index": index,
     }
     return Random(int.from_bytes(hashlib.sha256(canonical(descriptor)).digest(), "big"))
@@ -183,7 +189,7 @@ def jobs_bytes(jobs: tuple[JobSpecPrivate, ...]) -> bytes:
 
 def payload_bytes(cell: Cell, seed: int, jobs: tuple[JobSpecPrivate, ...]) -> bytes:
     return canonical({
-        "schema": SCHEMA, "cell": asdict(cell), "workload_seed": seed,
+        "schema": SCHEMA, "cell": exogenous_cell(cell), "workload_seed": seed,
         "cutoff_tick": None, "jobs": [asdict(j) for j in jobs],
     })
 

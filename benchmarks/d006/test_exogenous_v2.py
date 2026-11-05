@@ -9,7 +9,7 @@ import unittest
 from exogenous_v2 import (
     A_CELLS, HOLDOUT_NAMESPACE, S1_CELLS, S1_SEED_BY_N, Cell, RHO,
     a_order_seeds, a_seeds, arrival_rate, canonical, exp_gap, jobs_bytes,
-    make_jobs_v2, offered_work_per_job, payload_bytes, plan_a, realized_load,
+    exogenous_cell, make_jobs_v2, offered_work_per_job, payload_bytes, plan_a, realized_load,
     sha256, substream,
 )
 
@@ -80,6 +80,16 @@ class ExogenousV2Tests(unittest.TestCase):
                 json.loads(payload_bytes(cell, 710111, first))["schema"],
                 "D006_Exogenous_v2",
             )
+
+    def test_policy_not_part_of_exogenous_rng_or_payload(self):
+        resource_fit = Cell("T01", 128, 8, 16, "light", "heterogeneous",
+                            "ResourceFit")
+        fcfs = replace(resource_fit, policy="FCFSScanningPolicy")
+        jobs = make_jobs_v2(resource_fit, 710111)
+        self.assertEqual(jobs, make_jobs_v2(fcfs, 710111))
+        self.assertEqual(payload_bytes(resource_fit, 710111, jobs),
+                         payload_bytes(fcfs, 710111, jobs))
+        self.assertNotIn("policy", exogenous_cell(resource_fit))
 
     def test_bursts_ties_and_monotone_time(self):
         for family in ("uniform", "heterogeneous", "bursty"):
