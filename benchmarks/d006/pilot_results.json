@@ -1,0 +1,1308 @@
+{
+  "manifest": {
+    "protocol": "D006_pilot_v1",
+    "pr25_head": "f39ed8a2cf10febc8affc0525c29e4a6a25b9be7",
+    "python": "3.14.2 (main, Sep 10 2026, 12:33:04) [GCC 13.3.0]",
+    "platform": "Linux-6.8.0-1064-azure-x86_64-with-glibc2.39",
+    "simpy": "4.1.2",
+    "note": "Exploratory 3 reps/cell; NOT preregistered definitive matrix; peak RSS is process-global high watermark, not per-engine isolation"
+  },
+  "records": [
+    {
+      "engine": "custom",
+      "n": 100,
+      "family": "uniform",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 1100,
+      "repeat": 0,
+      "time_ns": 5489830,
+      "cpu_ns": 5489669,
+      "decisions": 100,
+      "events": 500,
+      "trace_hash": "0ba7092e92c9a191d9b6f8b9fd63da4b03b907538cd9bd820f99df7d71176ab7",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "custom",
+      "n": 100,
+      "family": "uniform",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 1100,
+      "repeat": 1,
+      "time_ns": 5375356,
+      "cpu_ns": 5376077,
+      "decisions": 100,
+      "events": 500,
+      "trace_hash": "0ba7092e92c9a191d9b6f8b9fd63da4b03b907538cd9bd820f99df7d71176ab7",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "custom",
+      "n": 100,
+      "family": "uniform",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 1100,
+      "repeat": 2,
+      "time_ns": 5400834,
+      "cpu_ns": 5401073,
+      "decisions": 100,
+      "events": 500,
+      "trace_hash": "0ba7092e92c9a191d9b6f8b9fd63da4b03b907538cd9bd820f99df7d71176ab7",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "simpy",
+      "n": 100,
+      "family": "uniform",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 1100,
+      "repeat": 0,
+      "time_ns": 4746071,
+      "cpu_ns": 4746421,
+      "decisions": 100,
+      "events": 500,
+      "trace_hash": "0ba7092e92c9a191d9b6f8b9fd63da4b03b907538cd9bd820f99df7d71176ab7",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "simpy",
+      "n": 100,
+      "family": "uniform",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 1100,
+      "repeat": 1,
+      "time_ns": 4726665,
+      "cpu_ns": 4727115,
+      "decisions": 100,
+      "events": 500,
+      "trace_hash": "0ba7092e92c9a191d9b6f8b9fd63da4b03b907538cd9bd820f99df7d71176ab7",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "simpy",
+      "n": 100,
+      "family": "uniform",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 1100,
+      "repeat": 2,
+      "time_ns": 4749146,
+      "cpu_ns": 4749687,
+      "decisions": 100,
+      "events": 500,
+      "trace_hash": "0ba7092e92c9a191d9b6f8b9fd63da4b03b907538cd9bd820f99df7d71176ab7",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "custom",
+      "n": 100,
+      "family": "uniform",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 1800,
+      "repeat": 0,
+      "time_ns": 5263116,
+      "cpu_ns": 5262886,
+      "decisions": 100,
+      "events": 327,
+      "trace_hash": "183c00d9dc0ca97ea19437953423675688b24adba086c16052b721d31b1f1956",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "custom",
+      "n": 100,
+      "family": "uniform",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 1800,
+      "repeat": 1,
+      "time_ns": 5201631,
+      "cpu_ns": 5202112,
+      "decisions": 100,
+      "events": 327,
+      "trace_hash": "183c00d9dc0ca97ea19437953423675688b24adba086c16052b721d31b1f1956",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "custom",
+      "n": 100,
+      "family": "uniform",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 1800,
+      "repeat": 2,
+      "time_ns": 5208384,
+      "cpu_ns": 5208694,
+      "decisions": 100,
+      "events": 327,
+      "trace_hash": "183c00d9dc0ca97ea19437953423675688b24adba086c16052b721d31b1f1956",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "simpy",
+      "n": 100,
+      "family": "uniform",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 1800,
+      "repeat": 0,
+      "time_ns": 4137645,
+      "cpu_ns": 4138116,
+      "decisions": 100,
+      "events": 327,
+      "trace_hash": "183c00d9dc0ca97ea19437953423675688b24adba086c16052b721d31b1f1956",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "simpy",
+      "n": 100,
+      "family": "uniform",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 1800,
+      "repeat": 1,
+      "time_ns": 4128128,
+      "cpu_ns": 4128367,
+      "decisions": 100,
+      "events": 327,
+      "trace_hash": "183c00d9dc0ca97ea19437953423675688b24adba086c16052b721d31b1f1956",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "simpy",
+      "n": 100,
+      "family": "uniform",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 1800,
+      "repeat": 2,
+      "time_ns": 4135050,
+      "cpu_ns": 4135511,
+      "decisions": 100,
+      "events": 327,
+      "trace_hash": "183c00d9dc0ca97ea19437953423675688b24adba086c16052b721d31b1f1956",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "custom",
+      "n": 100,
+      "family": "heterogeneous",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 1300,
+      "repeat": 0,
+      "time_ns": 6063510,
+      "cpu_ns": 6063610,
+      "decisions": 100,
+      "events": 466,
+      "trace_hash": "42034c1f922827d48da1a8e3bd163e1dbe879f8e64f9b3f78f0e4fc48f852acf",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "custom",
+      "n": 100,
+      "family": "heterogeneous",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 1300,
+      "repeat": 1,
+      "time_ns": 6099848,
+      "cpu_ns": 6100179,
+      "decisions": 100,
+      "events": 466,
+      "trace_hash": "42034c1f922827d48da1a8e3bd163e1dbe879f8e64f9b3f78f0e4fc48f852acf",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "custom",
+      "n": 100,
+      "family": "heterogeneous",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 1300,
+      "repeat": 2,
+      "time_ns": 6063320,
+      "cpu_ns": 6063671,
+      "decisions": 100,
+      "events": 466,
+      "trace_hash": "42034c1f922827d48da1a8e3bd163e1dbe879f8e64f9b3f78f0e4fc48f852acf",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "simpy",
+      "n": 100,
+      "family": "heterogeneous",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 1300,
+      "repeat": 0,
+      "time_ns": 5153621,
+      "cpu_ns": 5154052,
+      "decisions": 100,
+      "events": 466,
+      "trace_hash": "42034c1f922827d48da1a8e3bd163e1dbe879f8e64f9b3f78f0e4fc48f852acf",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "simpy",
+      "n": 100,
+      "family": "heterogeneous",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 1300,
+      "repeat": 1,
+      "time_ns": 5143523,
+      "cpu_ns": 5143643,
+      "decisions": 100,
+      "events": 466,
+      "trace_hash": "42034c1f922827d48da1a8e3bd163e1dbe879f8e64f9b3f78f0e4fc48f852acf",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "simpy",
+      "n": 100,
+      "family": "heterogeneous",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 1300,
+      "repeat": 2,
+      "time_ns": 5149184,
+      "cpu_ns": 5149564,
+      "decisions": 100,
+      "events": 466,
+      "trace_hash": "42034c1f922827d48da1a8e3bd163e1dbe879f8e64f9b3f78f0e4fc48f852acf",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "custom",
+      "n": 100,
+      "family": "heterogeneous",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2000,
+      "repeat": 0,
+      "time_ns": 10441264,
+      "cpu_ns": 10440803,
+      "decisions": 100,
+      "events": 405,
+      "trace_hash": "f89bb711749db9dfbc25861c36665b33eaa9e67dfc7efda3d0688182f2ca6ae9",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "custom",
+      "n": 100,
+      "family": "heterogeneous",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2000,
+      "repeat": 1,
+      "time_ns": 10309568,
+      "cpu_ns": 10309798,
+      "decisions": 100,
+      "events": 405,
+      "trace_hash": "f89bb711749db9dfbc25861c36665b33eaa9e67dfc7efda3d0688182f2ca6ae9",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "custom",
+      "n": 100,
+      "family": "heterogeneous",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2000,
+      "repeat": 2,
+      "time_ns": 10291403,
+      "cpu_ns": 10291994,
+      "decisions": 100,
+      "events": 405,
+      "trace_hash": "f89bb711749db9dfbc25861c36665b33eaa9e67dfc7efda3d0688182f2ca6ae9",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "simpy",
+      "n": 100,
+      "family": "heterogeneous",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2000,
+      "repeat": 0,
+      "time_ns": 7851268,
+      "cpu_ns": 7851889,
+      "decisions": 100,
+      "events": 405,
+      "trace_hash": "f89bb711749db9dfbc25861c36665b33eaa9e67dfc7efda3d0688182f2ca6ae9",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "simpy",
+      "n": 100,
+      "family": "heterogeneous",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2000,
+      "repeat": 1,
+      "time_ns": 7810453,
+      "cpu_ns": 7810832,
+      "decisions": 100,
+      "events": 405,
+      "trace_hash": "f89bb711749db9dfbc25861c36665b33eaa9e67dfc7efda3d0688182f2ca6ae9",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "simpy",
+      "n": 100,
+      "family": "heterogeneous",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2000,
+      "repeat": 2,
+      "time_ns": 7903015,
+      "cpu_ns": 7903526,
+      "decisions": 100,
+      "events": 405,
+      "trace_hash": "f89bb711749db9dfbc25861c36665b33eaa9e67dfc7efda3d0688182f2ca6ae9",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "custom",
+      "n": 100,
+      "family": "bursty",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 1500,
+      "repeat": 0,
+      "time_ns": 5518222,
+      "cpu_ns": 5517962,
+      "decisions": 100,
+      "events": 400,
+      "trace_hash": "749be4db955e71fdbb27a5778024f2a43d2c10852f7fa6f77ca2d986aa382d46",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "custom",
+      "n": 100,
+      "family": "bursty",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 1500,
+      "repeat": 1,
+      "time_ns": 5512693,
+      "cpu_ns": 5512822,
+      "decisions": 100,
+      "events": 400,
+      "trace_hash": "749be4db955e71fdbb27a5778024f2a43d2c10852f7fa6f77ca2d986aa382d46",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "custom",
+      "n": 100,
+      "family": "bursty",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 1500,
+      "repeat": 2,
+      "time_ns": 5491412,
+      "cpu_ns": 5491712,
+      "decisions": 100,
+      "events": 400,
+      "trace_hash": "749be4db955e71fdbb27a5778024f2a43d2c10852f7fa6f77ca2d986aa382d46",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "simpy",
+      "n": 100,
+      "family": "bursty",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 1500,
+      "repeat": 0,
+      "time_ns": 4476377,
+      "cpu_ns": 4476718,
+      "decisions": 100,
+      "events": 400,
+      "trace_hash": "749be4db955e71fdbb27a5778024f2a43d2c10852f7fa6f77ca2d986aa382d46",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "simpy",
+      "n": 100,
+      "family": "bursty",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 1500,
+      "repeat": 1,
+      "time_ns": 4529336,
+      "cpu_ns": 4529846,
+      "decisions": 100,
+      "events": 400,
+      "trace_hash": "749be4db955e71fdbb27a5778024f2a43d2c10852f7fa6f77ca2d986aa382d46",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "simpy",
+      "n": 100,
+      "family": "bursty",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 1500,
+      "repeat": 2,
+      "time_ns": 4518596,
+      "cpu_ns": 4518946,
+      "decisions": 100,
+      "events": 400,
+      "trace_hash": "749be4db955e71fdbb27a5778024f2a43d2c10852f7fa6f77ca2d986aa382d46",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "custom",
+      "n": 100,
+      "family": "bursty",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2200,
+      "repeat": 0,
+      "time_ns": 10572369,
+      "cpu_ns": 10571517,
+      "decisions": 100,
+      "events": 396,
+      "trace_hash": "7a7f3b0f4b526ed591d432977ade61a08946aed5f2ffe8f6fbe5930431be7cdf",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "custom",
+      "n": 100,
+      "family": "bursty",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2200,
+      "repeat": 1,
+      "time_ns": 10258252,
+      "cpu_ns": 10250147,
+      "decisions": 100,
+      "events": 396,
+      "trace_hash": "7a7f3b0f4b526ed591d432977ade61a08946aed5f2ffe8f6fbe5930431be7cdf",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "custom",
+      "n": 100,
+      "family": "bursty",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2200,
+      "repeat": 2,
+      "time_ns": 10340506,
+      "cpu_ns": 10340976,
+      "decisions": 100,
+      "events": 396,
+      "trace_hash": "7a7f3b0f4b526ed591d432977ade61a08946aed5f2ffe8f6fbe5930431be7cdf",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "simpy",
+      "n": 100,
+      "family": "bursty",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2200,
+      "repeat": 0,
+      "time_ns": 8030773,
+      "cpu_ns": 8031555,
+      "decisions": 100,
+      "events": 396,
+      "trace_hash": "7a7f3b0f4b526ed591d432977ade61a08946aed5f2ffe8f6fbe5930431be7cdf",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "simpy",
+      "n": 100,
+      "family": "bursty",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2200,
+      "repeat": 1,
+      "time_ns": 7944242,
+      "cpu_ns": 7944772,
+      "decisions": 100,
+      "events": 396,
+      "trace_hash": "7a7f3b0f4b526ed591d432977ade61a08946aed5f2ffe8f6fbe5930431be7cdf",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "simpy",
+      "n": 100,
+      "family": "bursty",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2200,
+      "repeat": 2,
+      "time_ns": 7945434,
+      "cpu_ns": 7945775,
+      "decisions": 100,
+      "events": 396,
+      "trace_hash": "7a7f3b0f4b526ed591d432977ade61a08946aed5f2ffe8f6fbe5930431be7cdf",
+      "maxrss_kib_process": 25472
+    },
+    {
+      "engine": "custom",
+      "n": 1000,
+      "family": "uniform",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2000,
+      "repeat": 0,
+      "time_ns": 343862326,
+      "cpu_ns": 343844977,
+      "decisions": 1000,
+      "events": 5000,
+      "trace_hash": "61b783c38bc7c738d44f8aee07cfe6734f7d1c14324f61c43ee8aa4e24a50b4e",
+      "maxrss_kib_process": 29588
+    },
+    {
+      "engine": "custom",
+      "n": 1000,
+      "family": "uniform",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2000,
+      "repeat": 1,
+      "time_ns": 346552889,
+      "cpu_ns": 346539348,
+      "decisions": 1000,
+      "events": 5000,
+      "trace_hash": "61b783c38bc7c738d44f8aee07cfe6734f7d1c14324f61c43ee8aa4e24a50b4e",
+      "maxrss_kib_process": 29588
+    },
+    {
+      "engine": "custom",
+      "n": 1000,
+      "family": "uniform",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2000,
+      "repeat": 2,
+      "time_ns": 372252360,
+      "cpu_ns": 372235611,
+      "decisions": 1000,
+      "events": 5000,
+      "trace_hash": "61b783c38bc7c738d44f8aee07cfe6734f7d1c14324f61c43ee8aa4e24a50b4e",
+      "maxrss_kib_process": 29588
+    },
+    {
+      "engine": "simpy",
+      "n": 1000,
+      "family": "uniform",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2000,
+      "repeat": 0,
+      "time_ns": 275562771,
+      "cpu_ns": 275551608,
+      "decisions": 1000,
+      "events": 5000,
+      "trace_hash": "61b783c38bc7c738d44f8aee07cfe6734f7d1c14324f61c43ee8aa4e24a50b4e",
+      "maxrss_kib_process": 29588
+    },
+    {
+      "engine": "simpy",
+      "n": 1000,
+      "family": "uniform",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2000,
+      "repeat": 1,
+      "time_ns": 273658126,
+      "cpu_ns": 273660488,
+      "decisions": 1000,
+      "events": 5000,
+      "trace_hash": "61b783c38bc7c738d44f8aee07cfe6734f7d1c14324f61c43ee8aa4e24a50b4e",
+      "maxrss_kib_process": 29588
+    },
+    {
+      "engine": "simpy",
+      "n": 1000,
+      "family": "uniform",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2000,
+      "repeat": 2,
+      "time_ns": 280854311,
+      "cpu_ns": 280846553,
+      "decisions": 1000,
+      "events": 5000,
+      "trace_hash": "61b783c38bc7c738d44f8aee07cfe6734f7d1c14324f61c43ee8aa4e24a50b4e",
+      "maxrss_kib_process": 29588
+    },
+    {
+      "engine": "custom",
+      "n": 1000,
+      "family": "uniform",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2700,
+      "repeat": 0,
+      "time_ns": 371069992,
+      "cpu_ns": 371061399,
+      "decisions": 1000,
+      "events": 3252,
+      "trace_hash": "d49ebad9daafbe4a880ab825fd8f6e5fa0dc14b69df6e50ac556c5ba82d3b6cf",
+      "maxrss_kib_process": 29588
+    },
+    {
+      "engine": "custom",
+      "n": 1000,
+      "family": "uniform",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2700,
+      "repeat": 1,
+      "time_ns": 360984313,
+      "cpu_ns": 360965511,
+      "decisions": 1000,
+      "events": 3252,
+      "trace_hash": "d49ebad9daafbe4a880ab825fd8f6e5fa0dc14b69df6e50ac556c5ba82d3b6cf",
+      "maxrss_kib_process": 29588
+    },
+    {
+      "engine": "custom",
+      "n": 1000,
+      "family": "uniform",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2700,
+      "repeat": 2,
+      "time_ns": 359115874,
+      "cpu_ns": 359106770,
+      "decisions": 1000,
+      "events": 3252,
+      "trace_hash": "d49ebad9daafbe4a880ab825fd8f6e5fa0dc14b69df6e50ac556c5ba82d3b6cf",
+      "maxrss_kib_process": 29588
+    },
+    {
+      "engine": "simpy",
+      "n": 1000,
+      "family": "uniform",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2700,
+      "repeat": 0,
+      "time_ns": 252086011,
+      "cpu_ns": 252087422,
+      "decisions": 1000,
+      "events": 3252,
+      "trace_hash": "d49ebad9daafbe4a880ab825fd8f6e5fa0dc14b69df6e50ac556c5ba82d3b6cf",
+      "maxrss_kib_process": 29588
+    },
+    {
+      "engine": "simpy",
+      "n": 1000,
+      "family": "uniform",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2700,
+      "repeat": 1,
+      "time_ns": 256753425,
+      "cpu_ns": 256662264,
+      "decisions": 1000,
+      "events": 3252,
+      "trace_hash": "d49ebad9daafbe4a880ab825fd8f6e5fa0dc14b69df6e50ac556c5ba82d3b6cf",
+      "maxrss_kib_process": 29588
+    },
+    {
+      "engine": "simpy",
+      "n": 1000,
+      "family": "uniform",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2700,
+      "repeat": 2,
+      "time_ns": 258094358,
+      "cpu_ns": 258080110,
+      "decisions": 1000,
+      "events": 3252,
+      "trace_hash": "d49ebad9daafbe4a880ab825fd8f6e5fa0dc14b69df6e50ac556c5ba82d3b6cf",
+      "maxrss_kib_process": 29588
+    },
+    {
+      "engine": "custom",
+      "n": 1000,
+      "family": "heterogeneous",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2200,
+      "repeat": 0,
+      "time_ns": 365130293,
+      "cpu_ns": 365111972,
+      "decisions": 1000,
+      "events": 4631,
+      "trace_hash": "851afa5635c2c8943292bc5519ed0d214f169e095e27c5610b4be932e5a1f537",
+      "maxrss_kib_process": 30192
+    },
+    {
+      "engine": "custom",
+      "n": 1000,
+      "family": "heterogeneous",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2200,
+      "repeat": 1,
+      "time_ns": 412057475,
+      "cpu_ns": 411845250,
+      "decisions": 1000,
+      "events": 4631,
+      "trace_hash": "851afa5635c2c8943292bc5519ed0d214f169e095e27c5610b4be932e5a1f537",
+      "maxrss_kib_process": 30192
+    },
+    {
+      "engine": "custom",
+      "n": 1000,
+      "family": "heterogeneous",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2200,
+      "repeat": 2,
+      "time_ns": 387014730,
+      "cpu_ns": 387007830,
+      "decisions": 1000,
+      "events": 4631,
+      "trace_hash": "851afa5635c2c8943292bc5519ed0d214f169e095e27c5610b4be932e5a1f537",
+      "maxrss_kib_process": 30192
+    },
+    {
+      "engine": "simpy",
+      "n": 1000,
+      "family": "heterogeneous",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2200,
+      "repeat": 0,
+      "time_ns": 285777412,
+      "cpu_ns": 285745360,
+      "decisions": 1000,
+      "events": 4631,
+      "trace_hash": "851afa5635c2c8943292bc5519ed0d214f169e095e27c5610b4be932e5a1f537",
+      "maxrss_kib_process": 30192
+    },
+    {
+      "engine": "simpy",
+      "n": 1000,
+      "family": "heterogeneous",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2200,
+      "repeat": 1,
+      "time_ns": 288540050,
+      "cpu_ns": 288529286,
+      "decisions": 1000,
+      "events": 4631,
+      "trace_hash": "851afa5635c2c8943292bc5519ed0d214f169e095e27c5610b4be932e5a1f537",
+      "maxrss_kib_process": 30192
+    },
+    {
+      "engine": "simpy",
+      "n": 1000,
+      "family": "heterogeneous",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2200,
+      "repeat": 2,
+      "time_ns": 290746499,
+      "cpu_ns": 290739372,
+      "decisions": 1000,
+      "events": 4631,
+      "trace_hash": "851afa5635c2c8943292bc5519ed0d214f169e095e27c5610b4be932e5a1f537",
+      "maxrss_kib_process": 30192
+    },
+    {
+      "engine": "custom",
+      "n": 1000,
+      "family": "heterogeneous",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2900,
+      "repeat": 0,
+      "time_ns": 919527424,
+      "cpu_ns": 919373030,
+      "decisions": 1000,
+      "events": 4036,
+      "trace_hash": "bd175f0d4ec835f777505d84d6120f08ac4526cbcb32752ad06b0e448e37b33d",
+      "maxrss_kib_process": 30192
+    },
+    {
+      "engine": "custom",
+      "n": 1000,
+      "family": "heterogeneous",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2900,
+      "repeat": 1,
+      "time_ns": 916153425,
+      "cpu_ns": 916091287,
+      "decisions": 1000,
+      "events": 4036,
+      "trace_hash": "bd175f0d4ec835f777505d84d6120f08ac4526cbcb32752ad06b0e448e37b33d",
+      "maxrss_kib_process": 30192
+    },
+    {
+      "engine": "custom",
+      "n": 1000,
+      "family": "heterogeneous",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2900,
+      "repeat": 2,
+      "time_ns": 929774515,
+      "cpu_ns": 929678941,
+      "decisions": 1000,
+      "events": 4036,
+      "trace_hash": "bd175f0d4ec835f777505d84d6120f08ac4526cbcb32752ad06b0e448e37b33d",
+      "maxrss_kib_process": 30192
+    },
+    {
+      "engine": "simpy",
+      "n": 1000,
+      "family": "heterogeneous",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2900,
+      "repeat": 0,
+      "time_ns": 645573846,
+      "cpu_ns": 645575711,
+      "decisions": 1000,
+      "events": 4036,
+      "trace_hash": "bd175f0d4ec835f777505d84d6120f08ac4526cbcb32752ad06b0e448e37b33d",
+      "maxrss_kib_process": 30192
+    },
+    {
+      "engine": "simpy",
+      "n": 1000,
+      "family": "heterogeneous",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2900,
+      "repeat": 1,
+      "time_ns": 630547403,
+      "cpu_ns": 630484045,
+      "decisions": 1000,
+      "events": 4036,
+      "trace_hash": "bd175f0d4ec835f777505d84d6120f08ac4526cbcb32752ad06b0e448e37b33d",
+      "maxrss_kib_process": 30192
+    },
+    {
+      "engine": "simpy",
+      "n": 1000,
+      "family": "heterogeneous",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2900,
+      "repeat": 2,
+      "time_ns": 650122238,
+      "cpu_ns": 650093804,
+      "decisions": 1000,
+      "events": 4036,
+      "trace_hash": "bd175f0d4ec835f777505d84d6120f08ac4526cbcb32752ad06b0e448e37b33d",
+      "maxrss_kib_process": 30192
+    },
+    {
+      "engine": "custom",
+      "n": 1000,
+      "family": "bursty",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2400,
+      "repeat": 0,
+      "time_ns": 298974561,
+      "cpu_ns": 298958759,
+      "decisions": 1000,
+      "events": 4002,
+      "trace_hash": "0f36d4b9e05892ee50e55fbf1b78b90d52f3ec0db21d3da4df5849d92454dfdd",
+      "maxrss_kib_process": 30192
+    },
+    {
+      "engine": "custom",
+      "n": 1000,
+      "family": "bursty",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2400,
+      "repeat": 1,
+      "time_ns": 296179733,
+      "cpu_ns": 296161626,
+      "decisions": 1000,
+      "events": 4002,
+      "trace_hash": "0f36d4b9e05892ee50e55fbf1b78b90d52f3ec0db21d3da4df5849d92454dfdd",
+      "maxrss_kib_process": 30192
+    },
+    {
+      "engine": "custom",
+      "n": 1000,
+      "family": "bursty",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2400,
+      "repeat": 2,
+      "time_ns": 307491983,
+      "cpu_ns": 307385094,
+      "decisions": 1000,
+      "events": 4002,
+      "trace_hash": "0f36d4b9e05892ee50e55fbf1b78b90d52f3ec0db21d3da4df5849d92454dfdd",
+      "maxrss_kib_process": 30192
+    },
+    {
+      "engine": "simpy",
+      "n": 1000,
+      "family": "bursty",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2400,
+      "repeat": 0,
+      "time_ns": 231869918,
+      "cpu_ns": 231860339,
+      "decisions": 1000,
+      "events": 4002,
+      "trace_hash": "0f36d4b9e05892ee50e55fbf1b78b90d52f3ec0db21d3da4df5849d92454dfdd",
+      "maxrss_kib_process": 30192
+    },
+    {
+      "engine": "simpy",
+      "n": 1000,
+      "family": "bursty",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2400,
+      "repeat": 1,
+      "time_ns": 229442546,
+      "cpu_ns": 229434671,
+      "decisions": 1000,
+      "events": 4002,
+      "trace_hash": "0f36d4b9e05892ee50e55fbf1b78b90d52f3ec0db21d3da4df5849d92454dfdd",
+      "maxrss_kib_process": 30192
+    },
+    {
+      "engine": "simpy",
+      "n": 1000,
+      "family": "bursty",
+      "load": "light",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 2400,
+      "repeat": 2,
+      "time_ns": 215592929,
+      "cpu_ns": 215579013,
+      "decisions": 1000,
+      "events": 4002,
+      "trace_hash": "0f36d4b9e05892ee50e55fbf1b78b90d52f3ec0db21d3da4df5849d92454dfdd",
+      "maxrss_kib_process": 30192
+    },
+    {
+      "engine": "custom",
+      "n": 1000,
+      "family": "bursty",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 3100,
+      "repeat": 0,
+      "time_ns": 885253615,
+      "cpu_ns": 885219341,
+      "decisions": 1000,
+      "events": 3901,
+      "trace_hash": "1cf89533af77e5260b52d13bf83be450e4326d0881e3aa333561ad3f76e44e9a",
+      "maxrss_kib_process": 30192
+    },
+    {
+      "engine": "custom",
+      "n": 1000,
+      "family": "bursty",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 3100,
+      "repeat": 1,
+      "time_ns": 895894702,
+      "cpu_ns": 895864874,
+      "decisions": 1000,
+      "events": 3901,
+      "trace_hash": "1cf89533af77e5260b52d13bf83be450e4326d0881e3aa333561ad3f76e44e9a",
+      "maxrss_kib_process": 30192
+    },
+    {
+      "engine": "custom",
+      "n": 1000,
+      "family": "bursty",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 3100,
+      "repeat": 2,
+      "time_ns": 892098835,
+      "cpu_ns": 892066123,
+      "decisions": 1000,
+      "events": 3901,
+      "trace_hash": "1cf89533af77e5260b52d13bf83be450e4326d0881e3aa333561ad3f76e44e9a",
+      "maxrss_kib_process": 30192
+    },
+    {
+      "engine": "simpy",
+      "n": 1000,
+      "family": "bursty",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 3100,
+      "repeat": 0,
+      "time_ns": 634193890,
+      "cpu_ns": 634083299,
+      "decisions": 1000,
+      "events": 3901,
+      "trace_hash": "1cf89533af77e5260b52d13bf83be450e4326d0881e3aa333561ad3f76e44e9a",
+      "maxrss_kib_process": 30192
+    },
+    {
+      "engine": "simpy",
+      "n": 1000,
+      "family": "bursty",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 3100,
+      "repeat": 1,
+      "time_ns": 662037785,
+      "cpu_ns": 662013950,
+      "decisions": 1000,
+      "events": 3901,
+      "trace_hash": "1cf89533af77e5260b52d13bf83be450e4326d0881e3aa333561ad3f76e44e9a",
+      "maxrss_kib_process": 30192
+    },
+    {
+      "engine": "simpy",
+      "n": 1000,
+      "family": "bursty",
+      "load": "saturated",
+      "capacity": [
+        8,
+        16
+      ],
+      "seed": 3100,
+      "repeat": 2,
+      "time_ns": 619341331,
+      "cpu_ns": 619325923,
+      "decisions": 1000,
+      "events": 3901,
+      "trace_hash": "1cf89533af77e5260b52d13bf83be450e4326d0881e3aa333561ad3f76e44e9a",
+      "maxrss_kib_process": 30192
+    }
+  ]
+}
