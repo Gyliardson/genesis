@@ -137,18 +137,18 @@ class IndependentOracles(unittest.TestCase):
             self.assertEqual(mutant, expected)
 
     def test_invalid_specs_constructor(self):
-        base = dict(id="X", arrival_tick=0, cpu_units=1, memory_units=1,
-                    actual_duration_ticks=1, estimated_duration_ticks=1)
+        base = {"id": "X", "arrival_tick": 0, "cpu_units": 1, "memory_units": 1,
+                "actual_duration_ticks": 1, "estimated_duration_ticks": 1}
         cases = [
-            (dict(id=""), "job id must be a nonempty string"),
-            (dict(id=1), "job id must be a nonempty string"),
-            (dict(arrival_tick=True), "arrival_tick must be an integer >= 0"),
-            (dict(arrival_tick=-1), "arrival_tick must be an integer >= 0"),
-            (dict(cpu_units=0), "cpu_units must be an integer >= 1"),
-            (dict(memory_units=1.2), "memory_units must be an integer >= 1"),
-            (dict(actual_duration_ticks=False),
+            ({"id": ""}, "job id must be a nonempty string"),
+            ({"id": 1}, "job id must be a nonempty string"),
+            ({"arrival_tick": True}, "arrival_tick must be an integer >= 0"),
+            ({"arrival_tick": -1}, "arrival_tick must be an integer >= 0"),
+            ({"cpu_units": 0}, "cpu_units must be an integer >= 1"),
+            ({"memory_units": 1.2}, "memory_units must be an integer >= 1"),
+            ({"actual_duration_ticks": False},
              "actual_duration_ticks must be an integer >= 1"),
-            (dict(estimated_duration_ticks=0),
+            ({"estimated_duration_ticks": 0},
              "estimated_duration_ticks must be an integer >= 1"),
         ]
         for mutation, message in cases:
