@@ -8,7 +8,7 @@ Run in a distinct isolated Python environment with `simpy==4.1.2` (initial Codes
 
 ```sh
 PYTHONPATH=src python benchmarks/d006/simpy_adapter_benchmark.py
-PYTHONPATH=src python benchmarks/d006/simpy_adapter_benchmark.py --pilot
+# Never run --pilot: it overwrites the historical pilot_results.json
 ```
 
 The first command compares full exact `SimulationResult`, including event order and post-event CPU/MEM, for 16 golden/policy combinations, 4 negative policies, and 64 fixed-seed generated workloads with replay, input permutations and fixed-H variants. This does **not** validate D-020/D-021 or untrusted Python policies.
@@ -43,7 +43,7 @@ Run outside production from a separate worktree, with clean Python **3.11**:
 python3.11 -m venv /tmp/genesis-d006-py311
 /tmp/genesis-d006-py311/bin/python -m pip install --require-hashes --no-deps -r benchmarks/d006/requirements-research.txt
 /tmp/genesis-d006-py311/bin/python -c 'import sys, simpy; assert sys.version_info[:2] == (3,11); assert simpy.__version__ == "4.1.2"'
-PYTHONPATH=src:benchmarks/d006 /tmp/genesis-d006-py311/bin/python -m unittest discover -s benchmarks/d006 -p oracle_tests.py -v
+PYTHONPATH=src:benchmarks/d006 /tmp/genesis-d006-py311/bin/python -m unittest discover -s benchmarks/d006 -p '*test*.py' -v
 PYTHONPATH=src /tmp/genesis-d006-py311/bin/python benchmarks/d006/simpy_adapter_benchmark.py
 ```
 
@@ -61,3 +61,48 @@ remote HEAD, followed by a balanced AB/BA feasibility pilot. Existing
 not be relabeled, overwritten or promoted into confirmatory evidence. The
 pre-registered full 96-cell matrix requires a separate feasibility/budget
 decision before execution; D-006, D-020 and D-021 remain OPEN.
+
+
+## D006-REPAIR-26-CONTINUE: dispatch mutation and bounded feasibility
+
+The `dispatch_mutation_test.py` regression temporarily changes the
+**actual** SimPy-adapter COMPLETE dispatch via the `builtins.sorted` seam,
+and requires the resulting event order to contradict the literal
+MULTI_TIE oracle. A trace-only mutation is not an engine mutation.
+Run both scientific suites in the pinned Python 3.11 environment:
+
+```sh
+PYTHONPATH=src:benchmarks/d006 /tmp/genesis-d006-py311/bin/python \
+  -m unittest discover -s benchmarks/d006 -p '*test*.py' -v
+PYTHONPATH=src /tmp/genesis-d006-py311/bin/python \
+  benchmarks/d006/simpy_adapter_benchmark.py
+```
+
+Only if these both PASS, obtain `PR26_REMOTE_HEAD_SHA` from fresh
+GitHub readback, check the worktree HEAD matches it, and execute:
+
+```sh
+PYTHONPATH=src:benchmarks/d006 /tmp/genesis-d006-py311/bin/python \
+  benchmarks/d006/feasibility_pilot.py \
+  --expected-head "$PR26_REMOTE_HEAD_SHA" \
+  --output benchmarks/d006/feasibility_raw.jsonl
+```
+
+This pilot re-runs the literal, mutation and differential scientific
+gates **before** timing. Its limited ex-ante sample uses N=100 in two
+capacity/policy configurations, two independent workload seeds/cell,
+5 warmups per engine/seed and 20 paired AB/BA repetitions/seed
+(10 each order). Raw JSONL is append-as-attempt, preserving failure
+status, per-engine process-isolated Linux RSS, wall/process CPU,
+result hash, event/decision counts, input workload hash, hardware
+manifest, GC and interpreter versions. A clean subprocess is launched
+per invocation; memory address-space limit is 2 GiB, timeout <=60s
+per invocation, total pilot <=30min. Failure/OOM/timeout/divergence
+stops further runs and preserves existing attempts. Script refuses
+to overwrite `pilot_results.json` and any pre-existing output.
+
+No causal claims, confidence-interval adequacy or engine selection
+follow from two independent workload seeds per cell. The
+**96-cell confirmatory matrix remains NOT_RUN**, with its resource
+budget and feasibility to be determined before execution. D-006,
+D-020 and D-021 remain OPEN.
