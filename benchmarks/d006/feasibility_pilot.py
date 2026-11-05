@@ -22,9 +22,9 @@ from pathlib import Path
 from statistics import median
 
 import simpy
+from simpy_adapter_benchmark import ResourceFit, correctness, digest, make_jobs, simpy_adapter
 
 from genesis.simulation.core import Capacity, FCFSScanningPolicy, JobSpecPrivate, simulate
-from simpy_adapter_benchmark import ResourceFit, correctness, digest, make_jobs, simpy_adapter
 
 VERSION = "D006_FEASIBILITY_V1"
 BASE_SHA = "f39ed8a2cf10febc8affc0525c29e4a6a25b9be7"
