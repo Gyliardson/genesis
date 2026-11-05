@@ -1,16 +1,32 @@
 """No benchmark timing or engine execution in the D006_Exogenous_v2 test suite."""
 from __future__ import annotations
 
-from dataclasses import replace
 import hashlib
 import json
 import unittest
+from dataclasses import replace
 
 from exogenous_v2 import (
-    A_CELLS, HOLDOUT_NAMESPACE, S1_CELLS, S1_SEED_BY_N, Cell, RHO,
-    a_order_seeds, a_seeds, arrival_rate, canonical, exp_gap, jobs_bytes,
-    exogenous_cell, make_jobs_v2, offered_work_per_job, payload_bytes, plan_a, realized_load,
-    sha256, substream,
+    A_CELLS,
+    HOLDOUT_NAMESPACE,
+    RHO,
+    S1_CELLS,
+    S1_SEED_BY_N,
+    Cell,
+    a_order_seeds,
+    a_seeds,
+    arrival_rate,
+    canonical,
+    exogenous_cell,
+    exp_gap,
+    jobs_bytes,
+    make_jobs_v2,
+    offered_work_per_job,
+    payload_bytes,
+    plan_a,
+    realized_load,
+    sha256,
+    substream,
 )
 
 
