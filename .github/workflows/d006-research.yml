@@ -58,8 +58,10 @@ jobs:
           python -m pip --isolated install --no-input --no-deps --only-binary=:all: --require-hashes --index-url https://pypi.org/simple -r benchmarks/d006/requirements-research.txt
           python -c 'import simpy; assert simpy.__version__ == "4.1.2"; print("SIMPY_VERSION=" + simpy.__version__)'
       - name: Independent oracles against both engines
+        env:
+          D006_ORACLE_MODE: dual
         run: python -m unittest discover -s benchmarks/d006 -p oracle_tests.py -v
       - name: Live adapter COMPLETE-dispatch mutation regression
         run: python -m unittest discover -s benchmarks/d006 -p dispatch_mutation_test.py -v
-      - name: Differential 16 golden, 4 negative, 64 by 6 replay cases
+      - name: Differential 16 golden, 4 negative, 64 seeds (374 executed variants)
         run: python benchmarks/d006/simpy_adapter_benchmark.py

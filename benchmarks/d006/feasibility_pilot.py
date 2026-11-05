@@ -165,6 +165,8 @@ def one_attempt(payload: dict, deadline: float) -> dict:
 
 
 def enforce_correctness() -> None:
+    if os.environ.get("D006_ORACLE_MODE", "dual") != "dual":
+        raise RuntimeError("D006_DUAL_ENGINE_REQUIRED: pilot cannot use core-only")
     suite = unittest.TestSuite()
     loader = unittest.TestLoader()
     suite.addTests(loader.loadTestsFromName("oracle_tests"))

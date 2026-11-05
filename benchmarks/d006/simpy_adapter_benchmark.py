@@ -243,7 +243,8 @@ def assert_equal(jobs, capacity, policy_type=FCFSScanningPolicy, cutoff=None):
     return a, digest(a)
 
 def correctness():
-    J=JobSpecPrivate
+    """Run both implementations and report *executed* differential comparisons."""
+    J = JobSpecPrivate
     cases = [
         ("A",(J("J2",0,1,1,1,1), J("J1",0,2,1,3,3)),Capacity(2,2),None),
         ("B",(J("J1",0,1,1,2,2),J("J2",2,1,1,1,1)),Capacity(1,1),None),
@@ -254,29 +255,56 @@ def correctness():
         ("tie",(J("X",0,1,1,1,1),J("Y",0,1,1,1,1),J("Z",1,1,1,1,1)),Capacity(2,2),None),
         ("edgeH",(J("Z",0,1,1,2,2),),Capacity(1,1),2),
     ]
-    results=[]
-    for name,jobs,cap,h in cases:
-        for pol in (FCFSScanningPolicy,ResourceFit):
-            _,hashval=assert_equal(jobs,cap,pol,h)
-            results.append((name,pol.__name__,hashval))
+    results = []
+    for name, jobs, cap, h in cases:
+        for pol in (FCFSScanningPolicy, ResourceFit):
+            _, hashval = assert_equal(jobs, cap, pol, h)
+            results.append((name, pol.__name__, hashval))
             if jobs:
-                assert_equal(tuple(reversed(jobs)),cap,pol,h)
-    for typ in (BadAction,NoReturn,Throws,ResetThrows):
-        assert_equal((J("X",0,1,1,1,1),),Capacity(1,1),typ)
+                assert_equal(tuple(reversed(jobs)), cap, pol, h)
+    for typ in (BadAction, NoReturn, Throws, ResetThrows):
+        assert_equal((J("X",0,1,1,1,1),), Capacity(1,1), typ)
+
+    # An assert_equal call runs exactly one custom and one SimPy simulation.
+    # Count each successful call, not the theoretical maximum per seed.
+    variants_by_seed = {}
+    empty_seeds = []
     for seed in range(64):
-        rng=Random(seed)
-        cap=Capacity(rng.randint(1,4),rng.randint(1,5))
-        jobs=tuple(J(f"J{i:04d}",rng.randint(0,12),rng.randint(1,cap.cpu_units+1),
-                     rng.randint(1,cap.memory_units+1),rng.randint(1,9),rng.randint(1,9))
-                   for i in range(rng.randint(0,20)))
-        for pol in (FCFSScanningPolicy,ResourceFit):
-            assert_equal(jobs,cap,pol)
-            assert_equal(tuple(reversed(jobs)),cap,pol)
+        rng = Random(seed)
+        cap = Capacity(rng.randint(1,4), rng.randint(1,5))
+        jobs = tuple(J(f"J{i:04d}", rng.randint(0,12),
+                       rng.randint(1,cap.cpu_units+1),
+                       rng.randint(1,cap.memory_units+1), rng.randint(1,9),
+                       rng.randint(1,9)) for i in range(rng.randint(0,20)))
+        executed = 0
+        if not jobs:
+            empty_seeds.append(seed)
+        for pol in (FCFSScanningPolicy, ResourceFit):
+            assert_equal(jobs, cap, pol)
+            executed += 1
+            assert_equal(tuple(reversed(jobs)), cap, pol)
+            executed += 1
             if jobs:
-                cutoff = max(j.arrival_tick for j in jobs)+1
-                assert_equal(jobs,cap,pol,cutoff)
-    return {"golden_policy_cases":len(results),"negative_policy_cases":4,
-            "random_seeds":64,"random_variants_per_seed":6}
+                cutoff = max(j.arrival_tick for j in jobs) + 1
+                assert_equal(jobs, cap, pol, cutoff)
+                executed += 1
+        variants_by_seed[str(seed)] = executed
+    distribution = {}
+    for n in variants_by_seed.values():
+        distribution[str(n)] = distribution.get(str(n), 0) + 1
+    total = sum(variants_by_seed.values())
+    return {
+        "golden_policy_cases": len(results),
+        "negative_policy_cases": 4,
+        "random_seeds": len(variants_by_seed),
+        "random_empty_seeds": empty_seeds,
+        "random_nonempty_seeds": len(variants_by_seed) - len(empty_seeds),
+        "random_variants_by_seed": variants_by_seed,
+        "random_variant_distribution": distribution,
+        "random_variants_total": total,
+        "random_engine_simulations": {"custom": total, "simpy": total},
+    }
+
 
 def pilot(output: Path):
     import gc

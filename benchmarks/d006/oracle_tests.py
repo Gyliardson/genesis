@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import os
 import unittest
 from dataclasses import replace
 
@@ -99,11 +101,19 @@ def resource_integrals(events, stop):
     return cpu, mem
 
 
-def engines():
-    result = [simulate]
-    if importlib.util.find_spec("simpy"):
-        from simpy_adapter_benchmark import simpy_adapter
-        result.append(simpy_adapter)
+def engines(mode: str | None = None):
+    """Default is scientific dual-engine. Core-only must be explicit."""
+    selected = os.environ.get("D006_ORACLE_MODE", "dual") if mode is None else mode
+    if selected == "core-only":
+        return (simulate,)
+    if selected != "dual":
+        raise ValueError(f"invalid D006_ORACLE_MODE: {selected}")
+    if importlib.util.find_spec("simpy") is None:
+        raise RuntimeError("D006_DUAL_ENGINE_REQUIRED: SimPy not installed")
+    from simpy_adapter_benchmark import simpy_adapter
+    result = (simulate, simpy_adapter)
+    if len({engine.__name__ for engine in result}) != 2:
+        raise RuntimeError("D006_DUAL_ENGINE_REQUIRED: two distinct motors required")
     return result
 
 
@@ -113,15 +123,38 @@ def jobs_for(rows):
 
 
 class IndependentOracles(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._engines = engines()
+        cls._engine_calls = {engine.__name__: 0 for engine in cls._engines}
+        mode = os.environ.get("D006_ORACLE_MODE", "dual")
+        print("D006_ORACLE_MODE=" + mode + " D006_ENGINE_COUNT="
+              + str(len(cls._engines)) + " ENGINES="
+              + ",".join(engine.__name__ for engine in cls._engines), flush=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        print("D006_ORACLE_ENGINE_CALLS="
+              + json.dumps(cls._engine_calls, sort_keys=True), flush=True)
+
+    def test_dual_mode_without_simpy_fails_closed(self):
+        from unittest.mock import patch
+        with patch("importlib.util.find_spec", return_value=None):
+            with self.assertRaisesRegex(RuntimeError, "D006_DUAL_ENGINE_REQUIRED"):
+                engines("dual")
+            self.assertEqual(tuple(engine.__name__ for engine in engines("core-only")),
+                             ("simulate",))
+
     def test_manual_event_outcome_integral_oracles(self):
         for label, case in CASES.items():
             rows, resource, cutoff, *_ = case
             expected = expected_result(case)
             self.assertEqual(resource_integrals(expected.events, expected.stop_tick),
                              case[-1], label)
-            for engine in engines():
+            for engine in self._engines:
                 for order in (jobs_for(rows), tuple(reversed(jobs_for(rows)))):
                     with self.subTest(case=label, engine=engine.__name__, order=order):
+                        self._engine_calls[engine.__name__] += 1
                         actual = engine(order, Capacity(*resource), FCFSScanningPolicy(),
                                         evaluation_cutoff_tick=cutoff)
                         self.assertEqual(actual, expected)
@@ -176,11 +209,12 @@ class IndependentOracles(unittest.TestCase):
             (valid, Capacity(1,1), {"evaluation_cutoff_tick": 0},
              ValueError, "fixed-H input cohort must arrive before evaluation cutoff"),
         ]
-        for engine in engines():
+        for engine in self._engines:
             for jobs, cap, kwargs, exc, message in cases:
                 with self.subTest(engine=engine.__name__, kwargs=kwargs), self.assertRaisesRegex(
                     exc, message
                 ):
+                    self._engine_calls[engine.__name__] += 1
                     engine(jobs, cap, FCFSScanningPolicy(), **kwargs)
 
     def test_policy_adversarial_payload_and_exception(self):
@@ -209,28 +243,54 @@ class IndependentOracles(unittest.TestCase):
             def __eq__(self, value):
                 raise RuntimeError("must not compare arbitrary payload")
 
+        # Fresh policy objects per motor: reset/decide state is never reused.
         cases = [
-            (Returns(None), "NO_RETURN", 1),
-            (Returns("X"), "INVALID_ACTION", 1),
-            (Returns(StartA_v0), "INVALID_ACTION", 1),
-            (Returns(StartA_v0("unknown")), "INVALID_ACTION", 1),
-            (Returns(StartA_v0(1)), "INVALID_ACTION", 1),
-            (Returns(StartA_v0(True)), "INVALID_ACTION", 1),
-            (Returns(StartA_v0(None)), "INVALID_ACTION", 1),
-            (Returns(SubStart("X")), "INVALID_ACTION", 1),
-            (Returns(Hostile()), "INVALID_ACTION", 1),
-            (Raises(None), "DECIDE_EXCEPTION", 1),
-            (ResetRaises(None), "DECIDE_EXCEPTION", 0),
+            (lambda: Returns(None), "NO_RETURN", 1),
+            (lambda: Returns("X"), "INVALID_ACTION", 1),
+            (lambda: Returns(StartA_v0), "INVALID_ACTION", 1),
+            (lambda: Returns(StartA_v0("unknown")), "INVALID_ACTION", 1),
+            (lambda: Returns(StartA_v0(1)), "INVALID_ACTION", 1),
+            (lambda: Returns(StartA_v0(True)), "INVALID_ACTION", 1),
+            (lambda: Returns(StartA_v0(None)), "INVALID_ACTION", 1),
+            (lambda: Returns(SubStart("X")), "INVALID_ACTION", 1),
+            (lambda: Returns(Hostile()), "INVALID_ACTION", 1),
+            (lambda: Raises(None), "DECIDE_EXCEPTION", 1),
+            (lambda: ResetRaises(None), "DECIDE_EXCEPTION", 0),
         ]
-        for engine in engines():
-            for policy, reason, decisions in cases:
-                with self.subTest(engine=engine.__name__, reason=reason,
-                                  policy=type(policy).__name__):
-                    result = engine(jobs_for([("X",0,1,1,1)]),
-                                    Capacity(1,1), policy)
+        for case_id, (policy_factory, reason, decisions) in enumerate(cases):
+            results = {}
+            for engine in self._engines:
+                with self.subTest(case=case_id, engine=engine.__name__, reason=reason):
+                    self._engine_calls[engine.__name__] += 1
+                    result = engine(jobs_for([("X", 0, 1, 1, 1)]), Capacity(1, 1),
+                                    policy_factory())
                     self.assertEqual((result.run_status, result.stop_reason,
                                       result.decisions), ("ERROR", reason, decisions))
                     self.assertEqual(result.events[-1].kind, "TERMINATE")
+                    results[engine.__name__] = result
+            if len(results) == 2:
+                custom, simpy = results["simulate"], results["simpy_adapter"]
+                with self.subTest(case=case_id, comparison="full SimulationResult"):
+                    self.assertEqual(custom, simpy)
+                    self.assertEqual(resource_integrals(custom.events, custom.stop_tick),
+                                     resource_integrals(simpy.events, simpy.stop_tick))
+
+    def test_random_variant_counts_are_executed_not_assumed(self):
+        from simpy_adapter_benchmark import correctness
+        counts = correctness()
+        self.assertEqual(counts["random_seeds"], 64)
+        self.assertEqual(counts["random_empty_seeds"], [22, 23, 30, 34, 36])
+        self.assertEqual(counts["random_nonempty_seeds"], 59)
+        self.assertEqual(counts["random_variant_distribution"], {"4": 5, "6": 59})
+        self.assertEqual(counts["random_variants_total"], 374)
+        by_seed = counts["random_variants_by_seed"]
+        self.assertEqual(len(by_seed), 64)
+        self.assertEqual(sum(by_seed.values()), 374)
+        self.assertEqual({int(seed) for seed, n in by_seed.items() if n == 4},
+                         {22, 23, 30, 34, 36})
+        self.assertEqual(counts["random_engine_simulations"],
+                         {"custom": 374, "simpy": 374})
+
 
 
 if __name__ == "__main__":

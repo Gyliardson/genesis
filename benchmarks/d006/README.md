@@ -11,7 +11,7 @@ PYTHONPATH=src python benchmarks/d006/simpy_adapter_benchmark.py
 # Never run --pilot: it overwrites the historical pilot_results.json
 ```
 
-The first command compares full exact `SimulationResult`, including event order and post-event CPU/MEM, for 16 golden/policy combinations, 4 negative policies, and 64 fixed-seed generated workloads with replay, input permutations and fixed-H variants. This does **not** validate D-020/D-021 or untrusted Python policies.
+The first command compares full exact `SimulationResult`, including event order and post-event CPU/MEM, for 16 golden/policy combinations, 4 negative policies, and 64 fixed-seed workloads (59 nonempty × 6 + 5 empty × 4 = 374 differential variants) with replay, input permutations and valid fixed-H variants. This does **not** validate D-020/D-021 or untrusted Python policies.
 
 `pilot_results.json` contains **72 exploratory raw timings**, 12 cells (N=100/1000 × uniform/heterogeneous/bursty × light/saturated at CPU=8 MEM=16), 3 repeats per engine, FCFS-scanning. The speed ratio is `median(SimPy time)/median(custom time)`, hence **>1 = custom faster** and **<1 = SimPy faster**. Data is illustrative only: lacks full N=10k/100k, capacity=(1,1), resource-fit performance, 5 warmups, 20 balanced AB/BA repetitions, isolated memory measurement, confidence intervals, and other preregistered scientific gates. Engine loop order is fixed custom→SimPy in this pilot, an order/confounding risk. `maxrss_kib_process` is a process-global high-water mark **not a comparable per-engine memory measurement**. Do not choose a framework based on this pilot.
 
@@ -106,3 +106,20 @@ follow from two independent workload seeds per cell. The
 **96-cell confirmatory matrix remains NOT_RUN**, with its resource
 budget and feasibility to be determined before execution. D-006,
 D-020 and D-021 remain OPEN.
+
+
+## R26 review fixes — scientific correctness only
+
+The strict scientific oracle mode is `D006_ORACLE_MODE=dual` (default and explicit in
+`.github/workflows/d006-research.yml`). It requires SimPy and two distinct
+engines before testing. It logs engine registration and actual engine calls;
+missing SimPy raises `D006_DUAL_ENGINE_REQUIRED`, covered by a negative
+regression. For reduced *local* verification only, set
+`D006_ORACLE_MODE=core-only`; the log labels this mode and the result is
+**not dual-engine scientific PASS**. The eleven adversarial policy cases use
+fresh policies per engine and compare complete `SimulationResult` and resource
+integrals, not just status/reason/decisions. The differential generator retains
+all five empty workloads (seeds 22,23,30,34,36): **374 actual comparisons per
+motor**, 59 × 6 + 5 × 4; the JSON reports counts by seed and distribution.
+No pilot, full matrix, or historical `pilot_results.json` regeneration was
+performed for this correction.
