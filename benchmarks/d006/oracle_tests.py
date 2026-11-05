@@ -6,8 +6,14 @@ import unittest
 from dataclasses import replace
 
 from genesis.simulation.core import (
-    Capacity, Event, FCFSScanningPolicy, JobOutcome, JobSpecPrivate,
-    SimulationResult, StartA_v0, simulate,
+    Capacity,
+    Event,
+    FCFSScanningPolicy,
+    JobOutcome,
+    JobSpecPrivate,
+    SimulationResult,
+    StartA_v0,
+    simulate,
 )
 
 # A row is (tick, event kind, job id, post-event CPU, post-event MEM).
@@ -72,7 +78,7 @@ CASES = {
 
 
 def expected_result(case):
-    jobs, cap, cutoff, rows, outcomes, summary, integrals = case
+    _, _, _, rows, outcomes, summary, _ = case
     status, reason, stop, decisions, cpu_stop, mem_stop = summary
     return SimulationResult(
         status, reason, stop,
@@ -146,9 +152,8 @@ class IndependentOracles(unittest.TestCase):
              "estimated_duration_ticks must be an integer >= 1"),
         ]
         for mutation, message in cases:
-            with self.subTest(mutation=mutation):
-                with self.assertRaisesRegex(ValueError, message):
-                    JobSpecPrivate(**(base | mutation))
+            with self.subTest(mutation=mutation), self.assertRaisesRegex(ValueError, message):
+                JobSpecPrivate(**(base | mutation))
         with self.assertRaisesRegex(ValueError, "cpu_units must be an integer >= 1"):
             Capacity(True, 1)
 
@@ -159,23 +164,24 @@ class IndependentOracles(unittest.TestCase):
             (list(valid), Capacity(1,1), {}, TypeError, "jobs must be a tuple"),
             (("X",), Capacity(1,1), {}, TypeError, "jobs must be a tuple"),
             (valid, "bad", {}, TypeError, "capacity must be Capacity"),
-            (valid, Capacity(1,1), dict(policy_seed=True), ValueError, "policy_seed"),
-            (valid, Capacity(1,1), dict(policy_seed=0.5), ValueError, "policy_seed"),
-            (valid, Capacity(1,1), dict(policy_seed=-1), ValueError, "policy_seed"),
-            (valid, Capacity(1,1), dict(evaluation_cutoff_tick=False),
+            (valid, Capacity(1,1), {"policy_seed": True}, ValueError, "policy_seed"),
+            (valid, Capacity(1,1), {"policy_seed": 0.5}, ValueError, "policy_seed"),
+            (valid, Capacity(1,1), {"policy_seed": -1}, ValueError, "policy_seed"),
+            (valid, Capacity(1,1), {"evaluation_cutoff_tick": False},
              ValueError, "evaluation_cutoff_tick"),
-            (valid, Capacity(1,1), dict(evaluation_cutoff_tick=0.5),
+            (valid, Capacity(1,1), {"evaluation_cutoff_tick": 0.5},
              ValueError, "evaluation_cutoff_tick"),
-            (valid, Capacity(1,1), dict(evaluation_cutoff_tick=-1),
+            (valid, Capacity(1,1), {"evaluation_cutoff_tick": -1},
              ValueError, "evaluation_cutoff_tick"),
-            (valid, Capacity(1,1), dict(evaluation_cutoff_tick=0),
+            (valid, Capacity(1,1), {"evaluation_cutoff_tick": 0},
              ValueError, "fixed-H input cohort must arrive before evaluation cutoff"),
         ]
         for engine in engines():
             for jobs, cap, kwargs, exc, message in cases:
-                with self.subTest(engine=engine.__name__, kwargs=kwargs):
-                    with self.assertRaisesRegex(exc, message):
-                        engine(jobs, cap, FCFSScanningPolicy(), **kwargs)
+                with self.subTest(engine=engine.__name__, kwargs=kwargs), self.assertRaisesRegex(
+                    exc, message
+                ):
+                    engine(jobs, cap, FCFSScanningPolicy(), **kwargs)
 
     def test_policy_adversarial_payload_and_exception(self):
         class Returns:
