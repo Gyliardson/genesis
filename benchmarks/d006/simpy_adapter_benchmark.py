@@ -5,24 +5,33 @@ No production or existing core code is modified.
 """
 from __future__ import annotations
 
-import json
 import hashlib
-from dataclasses import asdict
-from random import Random
-from time import perf_counter_ns, process_time_ns
-from statistics import median
-from pathlib import Path
+import json
 import platform
 import resource
 import sys
+from dataclasses import asdict
+from pathlib import Path
+from random import Random
+from statistics import median
+from time import perf_counter_ns, process_time_ns
 
 import simpy
 
 from genesis.simulation.core import (
-    Capacity, Event, FCFSScanningPolicy, JobOutcome, JobSpecPrivate,
-    ObservationV0, PublicPolicyConfig, ReadyJobPublic, SimulationResult,
-    StartA_v0, simulate,
+    Capacity,
+    Event,
+    FCFSScanningPolicy,
+    JobOutcome,
+    JobSpecPrivate,
+    ObservationV0,
+    PublicPolicyConfig,
+    ReadyJobPublic,
+    SimulationResult,
+    StartA_v0,
+    simulate,
 )
+
 
 def simpy_adapter(
     jobs: tuple[JobSpecPrivate, ...], capacity: Capacity, policy,
@@ -248,7 +257,7 @@ def correctness():
     results=[]
     for name,jobs,cap,h in cases:
         for pol in (FCFSScanningPolicy,ResourceFit):
-            x,hashval=assert_equal(jobs,cap,pol,h)
+            _,hashval=assert_equal(jobs,cap,pol,h)
             results.append((name,pol.__name__,hashval))
             if jobs:
                 assert_equal(tuple(reversed(jobs)),cap,pol,h)
