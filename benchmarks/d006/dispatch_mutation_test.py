@@ -5,9 +5,10 @@ import unittest
 from builtins import sorted as original_sorted
 from unittest.mock import patch
 
-from genesis.simulation.core import Capacity, FCFSScanningPolicy
 from oracle_tests import CASES, expected_result, jobs_for
 from simpy_adapter_benchmark import simpy_adapter
+
+from genesis.simulation.core import Capacity, FCFSScanningPolicy
 
 
 class DispatchMutation(unittest.TestCase):
@@ -24,7 +25,7 @@ class DispatchMutation(unittest.TestCase):
             if (frame is not None and frame.f_code.co_name == "simpy_adapter"
                     and iterable is frame.f_locals.get("finished") and len(iterable) > 1):
                 intercepted.append(tuple(iterable))
-                return list(reversed(original_sorted(iterable, *args, **kwargs)))
+                return original_sorted(iterable, *args, reverse=True, **kwargs)
             return original_sorted(iterable, *args, **kwargs)
 
         with patch("builtins.sorted", new=wrong_complete_order):
