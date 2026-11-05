@@ -27,7 +27,7 @@ class DispatchMutation(unittest.TestCase):
                 return list(reversed(original_sorted(iterable, *args, **kwargs)))
             return original_sorted(iterable, *args, **kwargs)
 
-        with patch("builtins.sorted", side_effect=wrong_complete_order):
+        with patch("builtins.sorted", new=wrong_complete_order):
             mutant = simpy_adapter(jobs, capacity, FCFSScanningPolicy())
         self.assertTrue(intercepted, "mutation must reach the actual COMPLETE dispatch")
         self.assertEqual((mutant.events[5].kind, mutant.events[5].job_id), ("COMPLETE", "B"))
