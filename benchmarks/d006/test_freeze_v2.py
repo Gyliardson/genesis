@@ -271,9 +271,11 @@ class SyntheticFreezeTests(unittest.TestCase):
     def test_external_plan_identity_missing_or_wrong_is_fail_closed(self):
         self.run_mini()
         for digest in (None, "", "0" * 64, "not-a-hash"):
-            with self.subTest(digest=digest):
-                with self.assertRaisesRegex(RuntimeError, "external expected-plan SHA256"):
-                    freeze_v2.verify_expected_plan(self.destination, self.entries, digest)
+            with (
+                self.subTest(digest=digest),
+                self.assertRaisesRegex(RuntimeError, "external expected-plan SHA256"),
+            ):
+                freeze_v2.verify_expected_plan(self.destination, self.entries, digest)
         with self.assertRaisesRegex(RuntimeError, "external expected-plan SHA256 required"):
             freeze_v2.verify_a(self.destination)
         with self.assertRaisesRegex(RuntimeError, "external expected-plan SHA256 required"):
