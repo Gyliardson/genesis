@@ -9,6 +9,10 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
+import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 from dataclasses import replace
@@ -45,6 +49,10 @@ DESC_UNIFORM_ARRIVAL0 = (
 DIGEST_UNIFORM_ARRIVAL0 = "2999a83dbd092e690ea172c1222f229296e823b7bca807c2d8c9be05b433bae6"
 SEED_UNIFORM_ARRIVAL0 = (
     18816315550675822325853593400002311983185368713982748901345109327395975052006
+)
+# Fixed from an independently serialized tiny T09/T10 descriptor, NOT an A lock.
+SYNTHETIC_EXPECTED_PLAN_SHA256 = (
+    "c9e54db8dc3c41c2996c21df1cca545971fa6816d9edcd13cc11e5bbb89b7666"
 )
 
 
@@ -163,10 +171,133 @@ class SyntheticFreezeTests(unittest.TestCase):
         self.destination = self.parent / "frozen"
         self.entries = ((UNIFORM, 17, 21), (BURST, 23, 27))
 
-    def run_mini(self):
+    def run_mini(self, entries=None):
         return freeze_v2._freeze_plan(
-            self.destination, self.entries, freeze_v2.source_provenance(),
+            self.destination, self.entries if entries is None else entries,
+            freeze_v2.source_provenance(),
         )
+
+    def _rewrite_manifest(self, manifest):
+        path = self.destination / "manifest.json"
+        raw = canonical(manifest)
+        path.write_bytes(raw)
+        (self.destination / "manifest.sha256").write_text(sha256(raw) + "\n")
+
+    def strict_mini(self):
+        return freeze_v2.verify_expected_plan(
+            self.destination, self.entries, SYNTHETIC_EXPECTED_PLAN_SHA256,
+        )
+
+    def test_strict_synthetic_positive_and_a_topology_without_a_generation(self):
+        self.assertEqual(
+            freeze_v2.expected_plan_sha256(self.entries), SYNTHETIC_EXPECTED_PLAN_SHA256,
+        )
+        plan_slots = freeze_v2._plan_slots(freeze_v2._a_entries())
+        self.assertEqual(len(plan_slots), 16)
+        self.assertEqual(len({row["cell"]["id"] for row in plan_slots}), 8)
+        self.run_mini()
+        self.assertEqual(len(self.strict_mini()["records"]), 2)
+        # A gate requires the full A plan even if a synthetic lock exists.
+        with self.assertRaisesRegex(RuntimeError, "expected plan records mismatch"):
+            freeze_v2.verify_a(
+                self.destination, freeze_v2.expected_plan_sha256(freeze_v2._a_entries()),
+            )
+
+    def test_subset_rebuilt_checksums_pass_generic_but_fail_strict(self):
+        self.run_mini()
+        manifest = json.loads((self.destination / "manifest.json").read_bytes())
+        missing = manifest["records"].pop()
+        (self.destination / missing["file"]).unlink()
+        self._rewrite_manifest(manifest)
+        # R27-09 first cause: the surviving record and checksum are fully valid.
+        self.assertEqual(len(freeze_v2.verify_freeze(self.destination)["records"]), 1)
+        with self.assertRaisesRegex(RuntimeError, "wrong slot count"):
+            self.strict_mini()
+
+    def test_extra_duplicate_and_wrong_workload_seed_rejected(self):
+        for entries in (
+            self.entries + ((HETERO, 31, 33),),
+            ((UNIFORM, 19, 21), self.entries[1]),
+        ):
+            with self.subTest(entries=entries):
+                self.run_mini(entries)
+                self.assertEqual(len(freeze_v2.verify_freeze(self.destination)["records"]),
+                                 len(entries))
+                with self.assertRaisesRegex(RuntimeError, "expected plan records mismatch"):
+                    self.strict_mini()
+                shutil.rmtree(self.destination)
+
+        self.run_mini()
+        manifest = json.loads((self.destination / "manifest.json").read_bytes())
+        extra = manifest["records"].pop()
+        (self.destination / extra["file"]).unlink()
+        manifest["records"].append(dict(manifest["records"][0]))
+        self._rewrite_manifest(manifest)
+        # Duplicate records pass the generic set-based verifier, not the strict one.
+        self.assertEqual(len(freeze_v2.verify_freeze(self.destination)["records"]), 2)
+        with self.assertRaisesRegex(RuntimeError, "cells/seeds/files/order"):
+            self.strict_mini()
+
+    def test_order_policy_cell_filename_and_stable_order_tampering(self):
+        self.run_mini()
+        baseline = json.loads((self.destination / "manifest.json").read_bytes())
+        for field, value in (
+            ("order_seed", 99), ("policy_seed", 99),
+            ("cell_policy", "ResourceFit"), ("reverse_order", None),
+            ("filename", "renamed.json"),
+        ):
+            with self.subTest(field=field):
+                manifest = json.loads(canonical(baseline))
+                if field == "cell_policy":
+                    manifest["records"][0]["cell"]["policy"] = value
+                elif field == "reverse_order":
+                    manifest["records"].reverse()
+                elif field == "filename":
+                    (self.destination / "T09_17.json").rename(
+                        self.destination / "renamed.json",
+                    )
+                    manifest["records"][0]["file"] = value
+                else:
+                    manifest["records"][0][field] = value
+                self._rewrite_manifest(manifest)
+                self.assertEqual(len(freeze_v2.verify_freeze(self.destination)["records"]), 2)
+                with self.assertRaisesRegex(RuntimeError, "cells/seeds/files/order"):
+                    self.strict_mini()
+                if field == "filename":
+                    (self.destination / "renamed.json").rename(
+                        self.destination / "T09_17.json",
+                    )
+
+    def test_external_plan_identity_missing_or_wrong_is_fail_closed(self):
+        self.run_mini()
+        for digest in (None, "", "0" * 64, "not-a-hash"):
+            with self.subTest(digest=digest):
+                with self.assertRaisesRegex(RuntimeError, "external expected-plan SHA256"):
+                    freeze_v2.verify_expected_plan(self.destination, self.entries, digest)
+        with self.assertRaisesRegex(RuntimeError, "external expected-plan SHA256 required"):
+            freeze_v2.verify_a(self.destination)
+        with self.assertRaisesRegex(RuntimeError, "external expected-plan SHA256 required"):
+            freeze_v2.freeze_a(self.parent / "not-created")
+        self.assertFalse((self.parent / "not-created").exists())
+
+    def test_pythonpath_shadowed_generator_provenance_rejected(self):
+        root = Path(freeze_v2.__file__).resolve().parents[2]
+        shadow = self.parent / "shadow"
+        shadow.mkdir()
+        # Identical bytes would have passed old tracked-file attestation.
+        generator = root / "benchmarks/d006/exogenous_v2.py"
+        (shadow / "exogenous_v2.py").write_bytes(generator.read_bytes())
+        env = os.environ.copy()
+        env["PYTHONPATH"] = os.pathsep.join((
+            str(shadow), str(generator.parent), str(root / "src"),
+        ))
+        result = subprocess.run(
+            [sys.executable, "-c", "import freeze_v2; freeze_v2.source_provenance()"],
+            cwd=root, env=env, capture_output=True, text=True, check=False,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("imported generator does not originate from tracked source",
+                      result.stderr)
 
     def test_transactional_readback_and_provenance(self):
         manifest_path = self.run_mini()
@@ -180,6 +311,7 @@ class SyntheticFreezeTests(unittest.TestCase):
         self.assertEqual(manifest["records"][1]["arrivals"]["last_burst_size"], 3)
         self.assertEqual(len(manifest["source_provenance"]["git_commit"]), 40)
         self.assertEqual(len(manifest["source_provenance"]["git_tree"]), 40)
+        self.assertEqual(len(manifest["source_provenance"]["imported_generator_sha256"]), 64)
         self.assertEqual(
             set(manifest["source_provenance"]["files"]), set(freeze_v2.DETERMINANT_PATHS),
         )
