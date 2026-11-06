@@ -6,6 +6,7 @@ import sys
 
 HASH = "77934cf30e3937a9f339f3f6cc4144b9fa67ae2531c0185a8565acd5d0e789ba"
 HEAD = "0399e842722e9bffe3063308e622830816744dc3"
+LOCK_HASH = "06614427b37e336407e8e82b1dd235b405232df0f50ee4115b96cf7aa970b5a0"
 TREE = "e692edb46a4fd7e0689c83e621c8b1346d4f3fe7"
 ROWS = (
     ("A01", 100, 1, 1, "light", "uniform", "FCFSScanningPolicy"),
@@ -54,6 +55,8 @@ def verify(plan, lock):
         raise ValueError("plan byte count / hash mismatch")
     if plan != canonical(expected_plan()) or parse(plan) != expected_plan():
         raise ValueError("plan descriptor mismatch")
+    if hashlib.sha256(lock).hexdigest() != LOCK_HASH:
+        raise ValueError("lock byte hash mismatch")
     rec = parse(lock)
     if rec.get("schema") != "D006_A_SoloCustodyLock_v1":
         raise ValueError("lock schema")
@@ -83,7 +86,8 @@ def main():
             (plan.replace(b'"policy_seed":93011', b'"policy_seed":true', 1),lock),
             (plan.replace(b'"workload_seed":710111', b'"workload_seed":710112', 1),lock),
             (plan,lock.replace(b'"freeze_authorized":false',b'"freeze_authorized":true',1)),
-            (plan,lock.replace(HEAD.encode(),b"0"*40,1))
+            (plan,lock.replace(HEAD.encode(),b"0"*40,1)),
+            (plan,lock.replace(b'"version":"3.11.18"',b'"version":"3.13.5"',1))
         ]
         for ap, al in altered:
             if ap == plan and al == lock:
@@ -93,7 +97,7 @@ def main():
             except (ValueError, TypeError, KeyError):
                 continue
             raise AssertionError("mutation bypass")
-        print("PASS: 1 positive + 6 negative fixtures; no workloads")
+        print("PASS: 1 positive + 7 negative fixtures; no workloads")
     print("PLAN_OK sha256="+HASH+" slots=16; FREEZE_NOT_AUTHORIZED")
 
 if __name__ == "__main__":
