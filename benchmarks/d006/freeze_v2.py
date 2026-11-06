@@ -165,6 +165,174 @@ def _write_bytes(path: Path, data: bytes) -> None:
         raise OSError(f"write/readback mismatch: {path.name}")
 
 
+
+def _serialization_metadata() -> dict[str, object]:
+    """Versioned byte-level serializer contract shared by writer and verifier."""
+    return {
+        "schema": SCHEMA, "jobs_schema": JOBS_SCHEMA,
+        "encoding": "utf-8", "sort_keys": True,
+        "separators": [",", ":"], "ensure_ascii": False, "allow_nan": False,
+        "digest": "SHA-256", "seed_endianness": "big",
+        "rng": "CPython MT19937 Random.random/randint",
+        "gap": "-log1p(-u)/rate", "arrival_tick": "floor(cumulative_gap)",
+    }
+
+
+def _runtime_metadata() -> dict[str, object]:
+    return {
+        "implementation": sys.implementation.name, "python": sys.version,
+        "python_version": list(sys.version_info[:3]),
+        "python_build": list(platform.python_build()),
+        "platform": platform.platform(), "machine": platform.machine(),
+    }
+
+
+def _canonical_json(raw: bytes, label: str) -> object:
+    """Forbid repeated keys, noncanonical numeric encodings, and non-JSON constants."""
+    def unique_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise RuntimeError(f"duplicate JSON key in {label}: {key}")
+            result[key] = value
+        return result
+
+    try:
+        value = json.loads(raw, object_pairs_hook=unique_pairs)
+        serialized = canonical(value)
+    except (ValueError, UnicodeError, TypeError, OverflowError) as exc:
+        raise RuntimeError(f"invalid canonical JSON in {label}") from exc
+    if serialized != raw:
+        raise RuntimeError(f"noncanonical JSON in {label}")
+    return value
+
+
+def _exact_fields(value: object, names: tuple[str, ...], label: str) -> dict:
+    if type(value) is not dict or set(value) != set(names):
+        raise RuntimeError(f"{label} schema/fields mismatch")
+    return value
+
+
+def _exact_type(value: object, kind: type, label: str) -> None:
+    if type(value) is not kind:
+        raise RuntimeError(f"{label} must have JSON type {kind.__name__}")
+
+
+def _digest(value: object, label: str, length: int = 64) -> None:
+    if type(value) is not str or re.fullmatch(r"[0-9a-f]{" + str(length) + r"}", value) is None:
+        raise RuntimeError(f"{label} invalid lowercase hex digest")
+
+
+def _cell_from_record(value: object) -> Cell:
+    cell = _exact_fields(
+        value, ("id", "n", "cpu", "memory", "load", "family", "policy"), "record.cell",
+    )
+    for name in ("id", "load", "family", "policy"):
+        _exact_type(cell[name], str, f"record.cell.{name}")
+    for name in ("n", "cpu", "memory"):
+        _exact_type(cell[name], int, f"record.cell.{name}")
+    try:
+        return Cell(**cell)
+    except (ValueError, TypeError) as exc:
+        raise RuntimeError("invalid record.cell configuration") from exc
+
+
+def _record_schema(record: object) -> Cell:
+    data = _exact_fields(record, (
+        "cell", "workload_seed", "order_seed", "policy_seed", "file",
+        "jobs_sha256", "payload_sha256", "expected_rho", "lambda",
+        "oversize_count", "arrivals", "realized",
+    ), "record")
+    cell = _cell_from_record(data["cell"])
+    for name in ("workload_seed", "order_seed", "policy_seed", "oversize_count"):
+        _exact_type(data[name], int, f"record.{name}")
+    for name in ("expected_rho", "lambda"):
+        _exact_type(data[name], float, f"record.{name}")
+    _exact_type(data["file"], str, "record.file")
+    for name in ("jobs_sha256", "payload_sha256"):
+        _digest(data[name], f"record.{name}")
+    try:
+        validate_workload_seed(data["workload_seed"])
+    except ValueError as exc:
+        raise RuntimeError("invalid record.workload_seed") from exc
+    order = data["order_seed"]
+    if (order < 0 or order in (data["workload_seed"], POLICY_SEED)
+            or HOLDOUT_NAMESPACE[0] <= order <= HOLDOUT_NAMESPACE[1]):
+        raise RuntimeError("invalid record.order_seed")
+    if data["policy_seed"] != POLICY_SEED:
+        raise RuntimeError("record.policy_seed differs from versioned implementation")
+    if data["file"] != f"{cell.id}_{data['workload_seed']}.json":
+        raise RuntimeError("record.file differs from versioned filename")
+    arrivals = _exact_fields(data["arrivals"], (
+        "arrival_ties", "simultaneous_arrival_ticks", "max_simultaneous_arrivals",
+        "burst_group_count", "last_burst_size",
+    ), "record.arrivals")
+    for name, value in arrivals.items():
+        _exact_type(value, int, f"record.arrivals.{name}")
+    realized = _exact_fields(data["realized"], (
+        "arrival_window_ticks", "cpu_work_ticks", "memory_work_ticks",
+        "rho_cpu_realized", "rho_memory_realized", "rho_max_realized",
+    ), "record.realized")
+    for name in ("arrival_window_ticks", "cpu_work_ticks", "memory_work_ticks"):
+        _exact_type(realized[name], int, f"record.realized.{name}")
+    for name in ("rho_cpu_realized", "rho_memory_realized", "rho_max_realized"):
+        _exact_type(realized[name], float, f"record.realized.{name}")
+    return cell
+
+
+def _manifest_schema(manifest: object) -> list:
+    data = _exact_fields(manifest, (
+        "schema", "status", "source_provenance", "runtime", "serialization",
+        "records", "holdout_reserved", "holdout_confidential",
+    ), "manifest")
+    if data["schema"] != MANIFEST_SCHEMA or type(data["schema"]) is not str:
+        raise RuntimeError("unsupported manifest schema")
+    if data["status"] != INTEGRITY_STATUS or type(data["status"]) is not str:
+        raise RuntimeError("manifest not integrity-complete")
+    serialization = _exact_fields(
+        data["serialization"], tuple(_serialization_metadata()), "serialization",
+    )
+    if canonical(serialization) != canonical(_serialization_metadata()):
+        raise RuntimeError("serialization differs from versioned implementation")
+    reserved = data["holdout_reserved"]
+    if (type(reserved) is not list or len(reserved) != len(HOLDOUT_NAMESPACE)
+            or any(type(value) is not int for value in reserved)
+            or reserved != list(HOLDOUT_NAMESPACE)):
+        raise RuntimeError("holdout_reserved differs from versioned implementation")
+    if data["holdout_confidential"] is not False:
+        raise RuntimeError("holdout_confidential must be boolean false (public)")
+    runtime = _exact_fields(data["runtime"], tuple(_runtime_metadata()), "runtime")
+    if canonical(runtime) != canonical(_runtime_metadata()):
+        raise RuntimeError("runtime differs from frozen environment")
+    provenance = _exact_fields(data["source_provenance"], (
+        "git_commit", "git_tree", "files",
+        "imported_generator_sha256", "imported_core_sha256",
+    ), "source_provenance")
+    for name in ("git_commit", "git_tree"):
+        _digest(provenance[name], f"source_provenance.{name}", 40)
+    for name in ("imported_generator_sha256", "imported_core_sha256"):
+        _digest(provenance[name], f"source_provenance.{name}")
+    files = _exact_fields(provenance["files"], DETERMINANT_PATHS, "source_provenance.files")
+    for name, file_info in files.items():
+        file_info = _exact_fields(
+            file_info, ("git_blob_sha1", "sha256", "bytes"), f"provenance.files.{name}",
+        )
+        _digest(file_info["git_blob_sha1"], f"provenance.{name}.git_blob_sha1", 40)
+        _digest(file_info["sha256"], f"provenance.{name}.sha256")
+        _exact_type(file_info["bytes"], int, f"provenance.{name}.bytes")
+        if file_info["bytes"] < 0:
+            raise RuntimeError("negative provenance file size")
+    records = data["records"]
+    if type(records) is not list or not records:
+        raise RuntimeError("manifest records must be a nonempty JSON array")
+    for record in records:
+        _record_schema(record)
+    filenames = [record["file"] for record in records]
+    if len(set(filenames)) != len(filenames):
+        raise RuntimeError("duplicate record filename")
+    return records
+
+
 def _verify_staging(stage: Path, records: list[dict[str, object]]) -> None:
     expected = {record["file"] for record in records} | {"manifest.json", "manifest.sha256"}
     if {entry.name for entry in stage.iterdir()} != expected:
@@ -173,18 +341,19 @@ def _verify_staging(stage: Path, records: list[dict[str, object]]) -> None:
     checksum = (stage / "manifest.sha256").read_bytes()
     if checksum != (sha256(manifest_bytes) + "\n").encode("ascii"):
         raise RuntimeError("manifest checksum mismatch")
-    manifest = json.loads(manifest_bytes)
-    if canonical(manifest) != manifest_bytes or manifest["records"] != records:
+    manifest = _canonical_json(manifest_bytes, "manifest")
+    validated_records = _manifest_schema(manifest)
+    if canonical(validated_records) != canonical(records):
         raise RuntimeError("manifest serialization or records mismatch")
-    if manifest["status"] != INTEGRITY_STATUS:
-        raise RuntimeError("manifest not integrity-complete")
-    for record in records:
+    for record in validated_records:
         raw = (stage / record["file"]).read_bytes()
         if sha256(raw) != record["payload_sha256"]:
             raise RuntimeError(f"payload checksum mismatch: {record['file']}")
-        payload = json.loads(raw)
-        cell = Cell(**record["cell"])
-        if raw != canonical(payload) or payload["schema"] != SCHEMA:
+        payload = _canonical_json(raw, f"payload {record['file']}")
+        _exact_fields(payload, ("schema", "cell", "workload_seed", "cutoff_tick", "jobs"),
+                      "payload")
+        cell = _cell_from_record(record["cell"])
+        if payload["schema"] != SCHEMA:
             raise RuntimeError("noncanonical payload or schema")
         if (payload["cell"] != exogenous_cell(cell)
                 or payload["workload_seed"] != record["workload_seed"]
@@ -200,10 +369,20 @@ def _verify_staging(stage: Path, records: list[dict[str, object]]) -> None:
         ))
         if raw != expected:
             raise RuntimeError("workload replay bytes mismatch")
-        if arrival_diagnostics(cell, jobs) != record["arrivals"]:
+        if canonical(arrival_diagnostics(cell, jobs)) != canonical(record["arrivals"]):
             raise RuntimeError("tie/burst diagnostics mismatch")
-        if realized_load(cell, jobs) != record["realized"]:
+        if canonical(realized_load(cell, jobs)) != canonical(record["realized"]):
             raise RuntimeError("realized offered load mismatch")
+        if (record["expected_rho"] != RHO[cell.load]
+                or canonical(record["expected_rho"]) != canonical(RHO[cell.load])):
+            raise RuntimeError("expected_rho differs from cell load")
+        if canonical(record["lambda"]) != canonical(arrival_rate(cell)):
+            raise RuntimeError("lambda differs from cell arrival rate")
+        oversize = sum(
+            job.cpu_units > cell.cpu or job.memory_units > cell.memory for job in jobs
+        )
+        if record["oversize_count"] != oversize:
+            raise RuntimeError("oversize_count differs from effective jobs")
 
 
 def _atomic_publish_dir(stage: Path, destination: Path) -> None:
@@ -266,20 +445,8 @@ def _freeze_plan(
         manifest = {
             "schema": MANIFEST_SCHEMA, "status": INTEGRITY_STATUS,
             "source_provenance": provenance,
-            "runtime": {
-                "implementation": sys.implementation.name, "python": sys.version,
-                "python_version": list(sys.version_info[:3]),
-                "python_build": list(platform.python_build()),
-                "platform": platform.platform(), "machine": platform.machine(),
-            },
-            "serialization": {
-                "schema": SCHEMA, "jobs_schema": JOBS_SCHEMA,
-                "encoding": "utf-8", "sort_keys": True,
-                "separators": [",", ":"], "ensure_ascii": False, "allow_nan": False,
-                "digest": "SHA-256", "seed_endianness": "big",
-                "rng": "CPython MT19937 Random.random/randint",
-                "gap": "-log1p(-u)/rate", "arrival_tick": "floor(cumulative_gap)",
-            },
+            "runtime": _runtime_metadata(),
+            "serialization": _serialization_metadata(),
             "records": records, "holdout_reserved": list(HOLDOUT_NAMESPACE),
             "holdout_confidential": False,
         }
@@ -304,21 +471,12 @@ def _freeze_plan(
 def verify_freeze(directory: Path) -> dict[str, object]:
     """Generic fixture integrity/replay only; NEVER sufficient for A-plan coverage."""
     raw = (directory / "manifest.json").read_bytes()
-    manifest = json.loads(raw)
-    if manifest.get("schema") != MANIFEST_SCHEMA:
-        raise RuntimeError("unsupported manifest schema")
+    manifest = _canonical_json(raw, "manifest")
+    _manifest_schema(manifest)
     _verify_staging(directory, manifest["records"])
     assert_freeze_runtime()
-    if source_provenance() != manifest["source_provenance"]:
+    if canonical(source_provenance()) != canonical(manifest["source_provenance"]):
         raise RuntimeError("Git tree/files differ from manifest")
-    runtime = manifest["runtime"]
-    if (runtime["implementation"] != sys.implementation.name
-            or runtime["python"] != sys.version
-            or runtime["python_version"] != list(sys.version_info[:3])
-            or runtime["python_build"] != list(platform.python_build())
-            or runtime["platform"] != platform.platform()
-            or runtime["machine"] != platform.machine()):
-        raise RuntimeError("runtime differs from frozen environment")
     return manifest
 
 
@@ -332,15 +490,20 @@ def verify_expected_plan(
     Synthetic test plans may use this without generating a single A workload.
     """
     _require_external_plan_identity(expected_entries, external_sha256)
-    manifest = json.loads((directory / "manifest.json").read_bytes())
-    received = manifest.get("records") if isinstance(manifest, dict) else None
+    manifest = _canonical_json((directory / "manifest.json").read_bytes(), "manifest")
+    received = manifest.get("records") if type(manifest) is dict else None
     expected = _plan_slots(expected_entries)
-    if not isinstance(received, list) or len(received) != len(expected):
+    if type(received) is not list or len(received) != len(expected):
         raise RuntimeError("expected plan records mismatch: wrong slot count")
     fields = ("cell", "workload_seed", "order_seed", "policy_seed", "file")
-    if any(not isinstance(record, dict) for record in received) or [
-        {field: record.get(field) for field in fields} for record in received
-    ] != expected:
+    if any(type(record) is not dict or any(field not in record for field in fields)
+           for record in received):
+        raise RuntimeError("expected plan records mismatch: missing descriptor fields")
+    slots = [{field: record[field] for field in fields} for record in received]
+    # Authenticate received bytes, not just the expected identity. Dict equality
+    # treats JSON integer 820111 and float 820111.0 as equal; SHA256 does not.
+    received_sha256 = sha256(canonical({"schema": EXPECTED_PLAN_SCHEMA, "slots": slots}))
+    if received_sha256 != external_sha256 or canonical(slots) != canonical(expected):
         raise RuntimeError("expected plan records mismatch: cells/seeds/files/order")
     return verify_freeze(directory)
 
