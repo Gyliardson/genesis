@@ -1,8 +1,8 @@
 """Verificador independente do plano A. Apenas metadados, nenhum job ou engine."""
 import hashlib
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 
 HASH = "77934cf30e3937a9f339f3f6cc4144b9fa67ae2531c0185a8565acd5d0e789ba"
 HEAD = "0399e842722e9bffe3063308e622830816744dc3"
