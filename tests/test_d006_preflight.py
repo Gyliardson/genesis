@@ -106,6 +106,19 @@ def test_rehashing_local_manifest_cannot_override_pinned_bytes(synthetic, rel):
         run_preview(synthetic)
 
 
+def test_repo_git_fsmonitor_never_executes_hook(synthetic, tmp_path):
+    """An untrusted .git/config must not launch a process during read-only checks."""
+    marker = tmp_path / "UNEXPECTED_FSMONITOR_EXECUTION"
+    hook = tmp_path / "fsmonitor-hook.sh"
+    hook.write_text(f"#!/bin/sh\nprintf executed > '{marker}'\nprintf '/\\n'\n")
+    hook.chmod(0o700)
+    subprocess.run(["git", "-C", str(synthetic[1]), "config", "core.fsmonitor",
+                    str(hook)], check=True, capture_output=True)
+    result = run_preview(synthetic)
+    assert result["status"] == "IDENTITY_AND_HOST_PREVIEW_PASS_ONLY"
+    assert not marker.exists(), "git status executed repository-local fsmonitor hook"
+
+
 def test_source_checkout_mutation_and_new_untracked_file_fail(synthetic):
     path = synthetic[1] / mod.GENERATOR_FILES[0]
     path.write_text("# changed outside Git\n")

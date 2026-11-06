@@ -91,9 +91,14 @@ def _parse_canonical(raw: bytes) -> object:
 
 def _git(root: Path, *args: str) -> bytes:
     try:
+        # Even read-only 'git status' can execute a configured fsmonitor hook.
+        # Override executable Git hooks and avoid optional index writes.
+        safe_env = os.environ.copy()
+        safe_env["GIT_OPTIONAL_LOCKS"] = "0"
         process = subprocess.run(
-            ["git", "-C", str(root), *args], capture_output=True, check=True,
-            timeout=15,
+            ["git", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null",
+             "-C", str(root), *args],
+            capture_output=True, check=True, timeout=15, env=safe_env,
         )
         return process.stdout
     except (OSError, subprocess.SubprocessError) as exc:
