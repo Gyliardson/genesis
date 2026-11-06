@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import ctypes
 import hashlib
+import inspect
 import json
 import os
 import platform
@@ -80,10 +81,16 @@ def source_provenance() -> dict[str, object]:
         if current != blob:
             raise RuntimeError(f"uncommitted or mismatched determinant: {relative}")
         files[relative] = {"git_blob_sha1": blob, "sha256": sha256(raw), "bytes": len(raw)}
+    # A wheel-installed Core may differ from the checked-out Core. Attest
+    # the actually imported class implementation, not only a source filename.
+    imported_core = Path(inspect.getfile(JobSpecPrivate)).resolve()
+    if sha256(imported_core.read_bytes()) != files["src/genesis/simulation/core.py"]["sha256"]:
+        raise RuntimeError("imported Core bytes differ from tracked Core")
     return {
         "git_commit": _git(root, "rev-parse", "--verify", "HEAD^{commit}"),
         "git_tree": _git(root, "rev-parse", "--verify", "HEAD^{tree}"),
         "files": files,
+        "imported_core_sha256": sha256(imported_core.read_bytes()),
     }
 
 
@@ -125,6 +132,12 @@ def _verify_staging(stage: Path, records: list[dict[str, object]]) -> None:
         jobs = tuple(JobSpecPrivate(**job) for job in payload["jobs"])
         if sha256(jobs_bytes(jobs)) != record["jobs_sha256"]:
             raise RuntimeError("jobs-only checksum mismatch")
+        # A self-consistent manifest/payload rewrite must still fail replay.
+        expected = payload_bytes(cell, record["workload_seed"], make_jobs_v2(
+            cell, record["workload_seed"],
+        ))
+        if raw != expected:
+            raise RuntimeError("workload replay bytes mismatch")
         if arrival_diagnostics(cell, jobs) != record["arrivals"]:
             raise RuntimeError("tie/burst diagnostics mismatch")
         if realized_load(cell, jobs) != record["realized"]:
