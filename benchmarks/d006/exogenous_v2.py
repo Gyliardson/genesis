@@ -10,7 +10,6 @@ import hashlib
 import json
 import math
 import re
-import sys
 from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -256,12 +255,17 @@ def main() -> None:
     actions = parser.add_mutually_exclusive_group(required=True)
     actions.add_argument("--plan", action="store_true")
     actions.add_argument("--freeze-a", type=Path)
+    actions.add_argument("--verify-freeze", type=Path)
     args = parser.parse_args()
     if args.plan:
         print(json.dumps([
             {"cell": asdict(cell), "seed": seed, "order_seed": order}
             for cell, seed, order in plan_a()
         ], indent=2))
+    elif args.verify_freeze is not None:
+        from freeze_v2 import verify_freeze
+
+        print(verify_freeze(args.verify_freeze)["status"])
     else:
         print(freeze_a(args.freeze_a))
 
