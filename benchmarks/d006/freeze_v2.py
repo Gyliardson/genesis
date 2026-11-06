@@ -9,6 +9,7 @@ import ctypes
 import hashlib
 import inspect
 import json
+import re
 import os
 import platform
 import shutil
@@ -18,6 +19,7 @@ import tempfile
 from dataclasses import asdict
 from pathlib import Path
 
+import exogenous_v2 as imported_generator
 from exogenous_v2 import (
     HOLDOUT_NAMESPACE,
     JOBS_SCHEMA,
@@ -52,6 +54,44 @@ DETERMINANT_PATHS = (
 )
 MANIFEST_SCHEMA = "D006_Exogenous_v2_FreezeManifest_2"
 INTEGRITY_STATUS = "INTEGRITY_COMPLETE_NOT_REVIEWED_NOT_AUTHORIZED"
+EXPECTED_PLAN_SCHEMA = "D006_ExpectedFreezePlan_v1"
+
+
+def _plan_slots(entries: tuple[tuple[Cell, int, int], ...]) -> list[dict[str, object]]:
+    """Complete, ordered identity independent of any received freeze manifest."""
+    return [
+        {
+            "cell": asdict(cell), "workload_seed": seed,
+            "order_seed": order, "policy_seed": POLICY_SEED,
+            "file": f"{cell.id}_{seed}.json",
+        }
+        for cell, seed, order in entries
+    ]
+
+
+def expected_plan_sha256(entries: tuple[tuple[Cell, int, int], ...]) -> str:
+    """Candidate identity, NOT approval/ratification of a proposed plan."""
+    return sha256(canonical({"schema": EXPECTED_PLAN_SCHEMA, "slots": _plan_slots(entries)}))
+
+
+def _require_external_plan_identity(
+    entries: tuple[tuple[Cell, int, int], ...], external_sha256: str | None,
+) -> None:
+    if not isinstance(external_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", external_sha256) is None:
+        raise RuntimeError("external expected-plan SHA256 required (64 lowercase hex digits)")
+    if expected_plan_sha256(entries) != external_sha256:
+        raise RuntimeError("external expected-plan SHA256 differs from prescribed plan")
+
+
+def _a_entries() -> tuple[tuple[Cell, int, int], ...]:
+    entries = plan_a()
+    expected_ids = [f"A{i:02d}" for i in range(1, 9) for _ in range(2)]
+    if (len(entries) != 16
+            or [cell.id for cell, _, _ in entries] != expected_ids
+            or any(entries[i][1] == entries[i + 1][1] for i in range(0, 16, 2))):
+        raise RuntimeError("proposed A plan must have 16 slots, 8 cells, 2 seeds per cell")
+    return entries
+
 
 
 def assert_freeze_runtime() -> None:
@@ -81,6 +121,27 @@ def source_provenance() -> dict[str, object]:
         if current != blob:
             raise RuntimeError(f"uncommitted or mismatched determinant: {relative}")
         files[relative] = {"git_blob_sha1": blob, "sha256": sha256(raw), "bytes": len(raw)}
+    # The tracked generator file alone does not prove imported symbols came
+    # from it: PYTHONPATH can shadow the module (even with identical bytes).
+    generator_path = (root / "benchmarks/d006/exogenous_v2.py").resolve()
+    imported_path = Path(inspect.getfile(imported_generator)).resolve()
+    if imported_path != generator_path:
+        raise RuntimeError("imported generator does not originate from tracked source")
+    for name in (
+        "Cell", "arrival_diagnostics", "arrival_rate", "canonical",
+        "exogenous_cell", "jobs_bytes", "make_jobs_v2", "payload_bytes",
+        "plan_a", "realized_load", "sha256", "validate_seed_partitions",
+        "validate_workload_seed",
+    ):
+        symbol = globals()[name]
+        if getattr(imported_generator, name) is not symbol:
+            raise RuntimeError(f"imported generator symbol binding differs: {name}")
+        if (inspect.isfunction(symbol) or inspect.isclass(symbol)) and (
+            Path(inspect.getfile(symbol)).resolve() != generator_path
+        ):
+            raise RuntimeError(f"imported generator symbol has foreign origin: {name}")
+    if sha256(imported_path.read_bytes()) != files["benchmarks/d006/exogenous_v2.py"]["sha256"]:
+        raise RuntimeError("imported generator bytes differ from tracked source")
     # A wheel-installed Core may differ from the checked-out Core. Attest
     # the actually imported class implementation, not only a source filename.
     imported_core = Path(inspect.getfile(JobSpecPrivate)).resolve()
@@ -90,6 +151,7 @@ def source_provenance() -> dict[str, object]:
         "git_commit": _git(root, "rev-parse", "--verify", "HEAD^{commit}"),
         "git_tree": _git(root, "rev-parse", "--verify", "HEAD^{tree}"),
         "files": files,
+        "imported_generator_sha256": sha256(imported_path.read_bytes()),
         "imported_core_sha256": sha256(imported_core.read_bytes()),
     }
 
@@ -240,7 +302,7 @@ def _freeze_plan(
 
 
 def verify_freeze(directory: Path) -> dict[str, object]:
-    """Readback and environment verification; not independent scientific approval."""
+    """Generic fixture integrity/replay only; NEVER sufficient for A-plan coverage."""
     raw = (directory / "manifest.json").read_bytes()
     manifest = json.loads(raw)
     if manifest.get("schema") != MANIFEST_SCHEMA:
@@ -260,7 +322,39 @@ def verify_freeze(directory: Path) -> dict[str, object]:
     return manifest
 
 
-def freeze_a(directory: Path) -> Path:
-    """Only produces proposed A inputs after separate authorization; never run by CI."""
+def verify_expected_plan(
+    directory: Path,
+    expected_entries: tuple[tuple[Cell, int, int], ...],
+    external_sha256: str | None = None,
+) -> dict[str, object]:
+    """Strict coverage gate; external lock must precede the future freeze.
+
+    Synthetic test plans may use this without generating a single A workload.
+    """
+    _require_external_plan_identity(expected_entries, external_sha256)
+    manifest = json.loads((directory / "manifest.json").read_bytes())
+    received = manifest.get("records") if isinstance(manifest, dict) else None
+    expected = _plan_slots(expected_entries)
+    if not isinstance(received, list) or len(received) != len(expected):
+        raise RuntimeError("expected plan records mismatch: wrong slot count")
+    fields = ("cell", "workload_seed", "order_seed", "policy_seed", "file")
+    if any(not isinstance(record, dict) for record in received) or [
+        {field: record.get(field) for field in fields} for record in received
+    ] != expected:
+        raise RuntimeError("expected plan records mismatch: cells/seeds/files/order")
+    return verify_freeze(directory)
+
+
+def verify_a(directory: Path, external_sha256: str | None = None) -> dict[str, object]:
+    """Strict 16-slot proposed A plan; not scientific review or S0 ratification."""
+    return verify_expected_plan(directory, _a_entries(), external_sha256)
+
+
+def freeze_a(directory: Path, external_sha256: str | None = None) -> Path:
+    """Only produce proposed A inputs after external lock and separate authority."""
     assert_freeze_runtime()
-    return _freeze_plan(directory, plan_a(), source_provenance())
+    entries = _a_entries()
+    _require_external_plan_identity(entries, external_sha256)
+    destination = _freeze_plan(directory, entries, source_provenance())
+    verify_a(directory, external_sha256)
+    return destination
