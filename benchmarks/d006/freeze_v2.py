@@ -17,8 +17,6 @@ import tempfile
 from dataclasses import asdict
 from pathlib import Path
 
-from genesis.simulation.core import JobSpecPrivate
-
 from exogenous_v2 import (
     HOLDOUT_NAMESPACE,
     JOBS_SCHEMA,
@@ -40,6 +38,7 @@ from exogenous_v2 import (
     validate_seed_partitions,
     validate_workload_seed,
 )
+from genesis.simulation.core import JobSpecPrivate
 
 DETERMINANT_PATHS = (
     "benchmarks/d006/exogenous_v2.py",
@@ -93,7 +92,7 @@ def _write_bytes(path: Path, data: bytes) -> None:
         output.flush()
         os.fsync(output.fileno())
     if path.read_bytes() != data:
-        raise IOError(f"write/readback mismatch: {path.name}")
+        raise OSError(f"write/readback mismatch: {path.name}")
 
 
 def _verify_staging(stage: Path, records: list[dict[str, object]]) -> None:
