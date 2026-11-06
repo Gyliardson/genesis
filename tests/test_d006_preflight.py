@@ -11,7 +11,6 @@ from pathlib import Path
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "docs/custody/d006/preflight.py"
 spec = importlib.util.spec_from_file_location("d006_a_preflight_v1", SCRIPT)
