@@ -12,5 +12,5 @@ def test_d006_plan_custody_readback_and_adversarial_mutants():
         cwd=root, capture_output=True, text=True, timeout=15, check=False,
     )
     assert result.returncode == 0, (result.stdout, result.stderr)
-    assert "1 positive + 7 negative" in result.stdout
+    assert "1 positive + 9 negative" in result.stdout
     assert "FREEZE_NOT_AUTHORIZED" in result.stdout

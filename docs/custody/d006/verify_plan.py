@@ -85,6 +85,8 @@ def main():
             (plan.replace(b'"order_seed":820111', b'"order_seed":820111.0', 1),lock),
             (plan.replace(b'"policy_seed":93011', b'"policy_seed":true', 1),lock),
             (plan.replace(b'"workload_seed":710111', b'"workload_seed":710112', 1),lock),
+            (plan.replace(b'"file":"A01_710111.json"', b'"file":"A01_710112.json"', 1),lock),
+            (plan.replace(b'"schema":"D006_ExpectedFreezePlan_v1"', b'"schema":"other"', 1),lock),
             (plan,lock.replace(b'"freeze_authorized":false',b'"freeze_authorized":true',1)),
             (plan,lock.replace(HEAD.encode(),b"0"*40,1)),
             (plan,lock.replace(b'"version":"3.11.18"',b'"version":"3.13.5"',1))
@@ -97,7 +99,7 @@ def main():
             except (ValueError, TypeError, KeyError):
                 continue
             raise AssertionError("mutation bypass")
-        print("PASS: 1 positive + 7 negative fixtures; no workloads")
+        print("PASS: 1 positive + 9 negative fixtures; no workloads")
     print("PLAN_OK sha256="+HASH+" slots=16; FREEZE_NOT_AUTHORIZED")
 
 if __name__ == "__main__":
