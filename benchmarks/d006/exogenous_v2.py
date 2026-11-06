@@ -6,6 +6,7 @@ measurements to revise the original preregistration or pool with v1 pilots.
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import hashlib
 import json
 import math
@@ -81,7 +82,9 @@ S1_CELLS = (
 )
 S1_SEED_BY_N = {1000: 810011, 10000: 811011, 100000: 812011}
 POLICY_SEED = 93011
-HOLDOUT_NAMESPACE = (910000, 919999)  # Reserved; never generated here.
+HOLDOUT_NAMESPACE = (910000, 919999)  # PUBLIC reservation, not blinded holdout.
+PILOT_SEEDS = (120101, 120211)
+
 
 
 def a_seeds(index: int) -> tuple[int, int]:
@@ -102,6 +105,38 @@ def plan_a() -> tuple[tuple[Cell, int, int], ...]:
         for index, cell in enumerate(A_CELLS, 1)
         for seed, order in zip(a_seeds(index), a_order_seeds(index), strict=True)
     )
+
+
+def validate_workload_seed(seed: int) -> None:
+    """Fail closed: reserved public seeds are not usable in development."""
+    if type(seed) is not int or seed < 0:
+        raise ValueError("workload seed must be a nonnegative integer")
+    if HOLDOUT_NAMESPACE[0] <= seed <= HOLDOUT_NAMESPACE[1]:
+        raise ValueError("reserved holdout seed is forbidden")
+
+
+def validate_seed_partitions() -> None:
+    seeds = (
+        [seed for i in range(1, 9) for seed in a_seeds(i)]
+        + [seed for i in range(1, 9) for seed in a_order_seeds(i)]
+        + list(S1_SEED_BY_N.values()) + [POLICY_SEED] + list(PILOT_SEEDS)
+    )
+    if len(set(seeds)) != len(seeds):
+        raise ValueError("cross-partition seed collision")
+    for seed in seeds:
+        validate_workload_seed(seed)
+
+
+def arrival_diagnostics(cell: Cell, jobs: tuple[JobSpecPrivate, ...]) -> dict[str, int]:
+    counts = Counter(job.arrival_tick for job in jobs)
+    groups = (len(jobs) + 15) // 16 if cell.family == "bursty" else 0
+    return {
+        "arrival_ties": len(jobs) - len(counts),
+        "simultaneous_arrival_ticks": sum(count > 1 for count in counts.values()),
+        "max_simultaneous_arrivals": max(counts.values(), default=0),
+        "burst_group_count": groups,
+        "last_burst_size": len(jobs) - 16 * (groups - 1) if groups else 0,
+    }
 
 
 def offered_work_per_job(cell: Cell) -> float:
@@ -125,8 +160,7 @@ def exogenous_cell(cell: Cell) -> dict[str, object]:
 
 
 def substream(cell: Cell, workload_seed: int, domain: str, index: int) -> Random:
-    if type(workload_seed) is not int or workload_seed < 0:
-        raise ValueError("workload seed must be a nonnegative integer")
+    validate_workload_seed(workload_seed)
     if type(index) is not int or index < 0:
         raise ValueError("substream index must be nonnegative")
     if domain not in {"arrival", "demands", "duration_true", "duration_est"}:
@@ -147,8 +181,7 @@ def exp_gap(cell: Cell, seed: int, index: int, rate: float) -> float:
 
 
 def make_jobs_v2(cell: Cell, workload_seed: int) -> tuple[JobSpecPrivate, ...]:
-    if type(workload_seed) is not int or workload_seed < 0:
-        raise ValueError("workload seed must be a nonnegative integer")
+    validate_workload_seed(workload_seed)
     rate = arrival_rate(cell)
     elapsed = 0.0
     last_arrival = 0
@@ -196,6 +229,8 @@ def payload_bytes(cell: Cell, seed: int, jobs: tuple[JobSpecPrivate, ...]) -> by
 
 def realized_load(cell: Cell, jobs: tuple[JobSpecPrivate, ...]) -> dict[str, float | int]:
     # Finite-input diagnostic, not stationary queue utilization or observed busy time.
+    if not jobs:
+        raise ValueError("realized load needs nonempty jobs")
     window = max(1, jobs[-1].arrival_tick + 1)
     cpu_work = sum(j.cpu_units * j.actual_duration_ticks for j in jobs)
     mem_work = sum(j.memory_units * j.actual_duration_ticks for j in jobs)
@@ -210,48 +245,10 @@ def realized_load(cell: Cell, jobs: tuple[JobSpecPrivate, ...]) -> dict[str, flo
 
 
 def freeze_a(directory: Path) -> Path:
-    """Produce immutable exogenous payloads only; never call either engine.
+    """Freeze proposed A inputs only if separately authorized (never in CI)."""
+    from freeze_v2 import freeze_a as transactional_freeze_a
 
-    Refuse existing output. No manifest is published if any payload is incomplete.
-    This is a prospective freeze, not approval of A timings or S1.
-    """
-    if sys.version_info[:3] != PYTHON_FREEZE_VERSION:
-        raise RuntimeError("freeze requires pinned CPython 3.11.18")
-    if directory.exists():
-        raise FileExistsError(directory)
-    directory.mkdir(parents=True, exist_ok=False)
-    source_hash = sha256(Path(__file__).read_bytes())
-    records = []
-    for cell, seed, order_seed in plan_a():
-        jobs = make_jobs_v2(cell, seed)
-        data = payload_bytes(cell, seed, jobs)
-        name = f"{cell.id}_{seed}.json"
-        (directory / name).write_bytes(data)
-        records.append({
-            "cell": asdict(cell), "workload_seed": seed,
-            "order_seed": order_seed, "policy_seed": POLICY_SEED,
-            "file": name, "jobs_sha256": sha256(jobs_bytes(jobs)),
-            "payload_sha256": sha256(data),
-            "expected_rho": RHO[cell.load], "lambda": arrival_rate(cell),
-            "oversize_count": sum(
-                j.cpu_units > cell.cpu or j.memory_units > cell.memory for j in jobs
-            ),
-            "realized": realized_load(cell, jobs),
-        })
-    manifest = {
-        "schema": "D006_Exogenous_v2_FreezeManifest_1",
-        "status": "GENERATED_NOT_REVIEWED_NOT_AUTHORIZED",
-        "source_sha256": source_hash,
-        "python": sys.version, "rng": "CPython Random MT19937",
-        "seed_hash": "SHA256 canonical JSON to unsigned big-endian integer",
-        "exp_transform": "-log1p(-Random.random()) / rate",
-        "discretization": "floor(cumulative interarrival gaps)",
-        "records": records, "holdout_reserved": list(HOLDOUT_NAMESPACE),
-    }
-    manifest_path = directory / "manifest.json"
-    manifest_path.write_bytes(canonical(manifest))
-    (directory / "manifest.sha256").write_text(sha256(canonical(manifest)) + "\n")
-    return manifest_path
+    return transactional_freeze_a(directory)
 
 
 def main() -> None:
