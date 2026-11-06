@@ -9,9 +9,9 @@ import ctypes
 import hashlib
 import inspect
 import json
-import re
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
