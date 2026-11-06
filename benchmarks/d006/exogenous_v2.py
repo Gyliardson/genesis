@@ -6,12 +6,12 @@ measurements to revise the original preregistration or pool with v1 pilots.
 from __future__ import annotations
 
 import argparse
-from collections import Counter
 import hashlib
 import json
 import math
 import re
 import sys
+from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from random import Random
