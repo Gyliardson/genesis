@@ -19,6 +19,7 @@ from unittest.mock import patch
 import freeze_v2
 from exogenous_v2 import (
     HOLDOUT_NAMESPACE,
+    JOBS_SCHEMA,
     S1_SEED_BY_N,
     Cell,
     arrival_diagnostics,
@@ -270,6 +271,42 @@ class SyntheticFreezeTests(unittest.TestCase):
         (self.destination / "manifest.sha256").write_text(sha256(target.read_bytes()) + "\n")
         with self.assertRaisesRegex(RuntimeError, "Git tree/files differ"):
             freeze_v2.verify_freeze(self.destination)
+
+    def test_consistent_checksum_rewrite_still_fails_literal_replay(self):
+        self.run_mini()
+        payload_path = self.destination / "T09_17.json"
+        payload = json.loads(payload_path.read_bytes())
+        payload["jobs"][0]["arrival_tick"] = 1
+        raw = canonical(payload)
+        payload_path.write_bytes(raw)
+        manifest_path = self.destination / "manifest.json"
+        manifest = json.loads(manifest_path.read_bytes())
+        record = manifest["records"][0]
+        record["payload_sha256"] = sha256(raw)
+        record["jobs_sha256"] = sha256(
+            canonical({"schema": JOBS_SCHEMA, "jobs": payload["jobs"]}),
+        )
+        # This mutation leaves tie counts and realized workload unchanged:
+        # both payload and manifest hashes are internally self-consistent.
+        manifest_raw = canonical(manifest)
+        manifest_path.write_bytes(manifest_raw)
+        (self.destination / "manifest.sha256").write_text(
+            sha256(manifest_raw) + "\n",
+        )
+        with self.assertRaisesRegex(RuntimeError, "workload replay bytes mismatch"):
+            freeze_v2.verify_freeze(self.destination)
+
+    def test_imported_core_mismatch_is_rejected(self):
+        class FakeJob:
+            pass
+
+        with (
+            patch.object(freeze_v2, "JobSpecPrivate", FakeJob),
+            self.assertRaisesRegex(RuntimeError, "imported Core bytes differ"),
+        ):
+            freeze_v2.source_provenance()
+
+
 
 
 if __name__ == "__main__":
