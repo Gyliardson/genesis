@@ -233,8 +233,9 @@ class SyntheticFreezeTests(unittest.TestCase):
         (self.destination / extra["file"]).unlink()
         manifest["records"].append(dict(manifest["records"][0]))
         self._rewrite_manifest(manifest)
-        # Duplicate records pass the generic set-based verifier, not the strict one.
-        self.assertEqual(len(freeze_v2.verify_freeze(self.destination)["records"]), 2)
+        # A generic integrity verifier must reject duplicate filenames too.
+        with self.assertRaisesRegex(RuntimeError, "duplicate record filename"):
+            freeze_v2.verify_freeze(self.destination)
         with self.assertRaisesRegex(RuntimeError, "cells/seeds/files/order"):
             self.strict_mini()
 
@@ -260,13 +261,159 @@ class SyntheticFreezeTests(unittest.TestCase):
                 else:
                     manifest["records"][0][field] = value
                 self._rewrite_manifest(manifest)
-                self.assertEqual(len(freeze_v2.verify_freeze(self.destination)["records"]), 2)
+                if field in ("policy_seed", "filename"):
+                    # New generic versioned schema also rejects impossible producer fields.
+                    with self.assertRaises(RuntimeError):
+                        freeze_v2.verify_freeze(self.destination)
+                else:
+                    self.assertEqual(len(freeze_v2.verify_freeze(self.destination)["records"]), 2)
                 with self.assertRaisesRegex(RuntimeError, "cells/seeds/files/order"):
                     self.strict_mini()
                 if field == "filename":
                     (self.destination / "renamed.json").rename(
                         self.destination / "T09_17.json",
                     )
+
+
+    def test_received_plan_exact_json_type_and_schema_regressions(self):
+        """F1: self-consistent checksums cannot launder int/float or bool aliases."""
+        self.run_mini()
+        baseline = json.loads((self.destination / "manifest.json").read_bytes())
+        from copy import deepcopy
+
+        mutations = (
+            (("records", 0, "order_seed"), 21.0),
+            (("records", 0, "policy_seed"), 93011.0),
+            (("records", 0, "workload_seed"), 17.0),
+            (("records", 0, "order_seed"), True),
+            (("records", 0, "workload_seed"), True),
+            (("records", 0, "policy_seed"), True),
+            (("records", 0, "cell", "n"), 4.0),
+            (("records", 0, "cell", "cpu"), 1.0),
+            (("records", 0, "cell", "memory"), True),
+            (("records", 0, "cell", "load"), False),
+            (("records", 0, "file"), True),
+        )
+        for path, value in mutations:
+            with self.subTest(path=path, value=value):
+                manifest = deepcopy(baseline)
+                obj = manifest
+                for part in path[:-1]:
+                    obj = obj[part]
+                obj[path[-1]] = value
+                self._rewrite_manifest(manifest)
+                # Exact expected plan hash remains external, not recomputed on mutation.
+                with self.assertRaisesRegex(RuntimeError, "expected plan records mismatch"):
+                    self.strict_mini()
+                with self.assertRaises(RuntimeError):
+                    freeze_v2.verify_freeze(self.destination)
+
+        for target, field in (
+            ("record", "order_seed"), ("record", "unexpected"),
+            ("cell", "policy"), ("cell", "unexpected"),
+        ):
+            for delete in (True, False):
+                if field == "unexpected" and delete:
+                    continue
+                with self.subTest(target=target, field=field, delete=delete):
+                    manifest = deepcopy(baseline)
+                    obj = manifest["records"][0]
+                    if target == "cell":
+                        obj = obj["cell"]
+                    if delete:
+                        del obj[field]
+                    else:
+                        obj[field] = 42
+                    self._rewrite_manifest(manifest)
+                    with self.assertRaisesRegex(RuntimeError, "expected plan records mismatch"):
+                        self.strict_mini()
+                    with self.assertRaises(RuntimeError):
+                        freeze_v2.verify_freeze(self.destination)
+
+        # Duplicate JSON keys: even if the checksum is recomputed, parsing fails closed.
+        raw = canonical(baseline)
+        duplicate = raw.replace(b'"policy_seed":93011',
+                                b'"policy_seed":93011,"policy_seed":93011', 1)
+        self.assertNotEqual(raw, duplicate)
+        (self.destination / "manifest.json").write_bytes(duplicate)
+        (self.destination / "manifest.sha256").write_text(sha256(duplicate) + "\n")
+        with self.assertRaisesRegex(RuntimeError, "duplicate JSON key"):
+            freeze_v2.verify_freeze(self.destination)
+        with self.assertRaisesRegex(RuntimeError, "duplicate JSON key"):
+            self.strict_mini()
+
+    def test_manifest_metadata_tampering_with_valid_payloads_is_rejected(self):
+        """F2: recomputed manifest.sha256 cannot authenticate false scientific metadata."""
+        from copy import deepcopy
+
+        self.run_mini()
+        baseline = json.loads((self.destination / "manifest.json").read_bytes())
+        payloads = {
+            record["file"]: (self.destination / record["file"]).read_bytes()
+            for record in baseline["records"]
+        }
+        mutations = (
+            (("records", 0, "expected_rho"), -1.0),
+            (("records", 0, "expected_rho"), True),
+            (("records", 0, "lambda"), -1.0),
+            (("records", 0, "lambda"), "negative"),
+            (("records", 0, "oversize_count"), 999),
+            (("records", 0, "oversize_count"), 0.0),
+            (("records", 0, "arrivals", "arrival_ties"), False),
+            (("records", 0, "realized", "cpu_work_ticks"), 999),
+            (("records", 0, "realized", "rho_cpu_realized"), 0),
+            (("serialization", "seed_endianness"), "little"),
+            (("serialization", "sort_keys"), 1),
+            (("serialization", "separators"), [":", ","]),
+            (("serialization", "extra"), "unrecognized"),
+            (("holdout_reserved",), [910000, 920000]),
+            (("holdout_reserved",), [910000.0, 919999]),
+            (("holdout_confidential",), True),
+            (("holdout_confidential",), 0),
+            (("schema",), "D006_Exogenous_v2_FreezeManifest_1"),
+            (("status",), "COMPLETE"),
+            (("runtime", "python_version"), [3, 11, 18.0]),
+            (("source_provenance", "files",
+              freeze_v2.DETERMINANT_PATHS[0], "bytes"), 10.0),
+            (("unexpected_top_level",), 42),
+            (("records", 0, "unexpected_record"), 42),
+        )
+        for path, value in mutations:
+            with self.subTest(path=path, value=value):
+                manifest = deepcopy(baseline)
+                obj = manifest
+                for part in path[:-1]:
+                    obj = obj[part]
+                obj[path[-1]] = value
+                self._rewrite_manifest(manifest)
+                raw = (self.destination / "manifest.json").read_bytes()
+                self.assertEqual(
+                    (self.destination / "manifest.sha256").read_text(),
+                    sha256(raw) + "\n",
+                )
+                for name, original in payloads.items():
+                    self.assertEqual((self.destination / name).read_bytes(), original)
+                with self.assertRaises(RuntimeError):
+                    freeze_v2.verify_freeze(self.destination)
+                with self.assertRaises(RuntimeError):
+                    self.strict_mini()
+
+        for path in (
+            ("serialization", "gap"),
+            ("records", 0, "expected_rho"),
+            ("records", 0, "arrivals", "arrival_ties"),
+            ("source_provenance", "git_tree"),
+            ("holdout_reserved",),
+        ):
+            with self.subTest(missing=path):
+                manifest = deepcopy(baseline)
+                obj = manifest
+                for part in path[:-1]:
+                    obj = obj[part]
+                del obj[path[-1]]
+                self._rewrite_manifest(manifest)
+                with self.assertRaises(RuntimeError):
+                    freeze_v2.verify_freeze(self.destination)
 
     def test_external_plan_identity_missing_or_wrong_is_fail_closed(self):
         self.run_mini()
