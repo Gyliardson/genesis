@@ -243,11 +243,11 @@ def realized_load(cell: Cell, jobs: tuple[JobSpecPrivate, ...]) -> dict[str, flo
     }
 
 
-def freeze_a(directory: Path) -> Path:
-    """Freeze proposed A inputs only if separately authorized (never in CI)."""
+def freeze_a(directory: Path, expected_plan_sha256: str | None = None) -> Path:
+    """Freeze proposed A inputs only with external plan lock and authorization."""
     from freeze_v2 import freeze_a as transactional_freeze_a
 
-    return transactional_freeze_a(directory)
+    return transactional_freeze_a(directory, expected_plan_sha256)
 
 
 def main() -> None:
@@ -255,8 +255,14 @@ def main() -> None:
     actions = parser.add_mutually_exclusive_group(required=True)
     actions.add_argument("--plan", action="store_true")
     actions.add_argument("--freeze-a", type=Path)
-    actions.add_argument("--verify-freeze", type=Path)
+    actions.add_argument("--verify-freeze", type=Path,
+                         help="generic fixture integrity ONLY, not plan A approval")
+    actions.add_argument("--verify-a", type=Path, help="strict proposed A coverage")
+    parser.add_argument("--expected-plan-sha256",
+                        help="external prospective plan SHA256, never manifest-derived")
     args = parser.parse_args()
+    if (args.freeze_a is not None or args.verify_a is not None) and not args.expected_plan_sha256:
+        parser.error("--expected-plan-sha256 required for --freeze-a and --verify-a")
     if args.plan:
         print(json.dumps([
             {"cell": asdict(cell), "seed": seed, "order_seed": order}
@@ -265,9 +271,14 @@ def main() -> None:
     elif args.verify_freeze is not None:
         from freeze_v2 import verify_freeze
 
-        print(verify_freeze(args.verify_freeze)["status"])
+        print("GENERIC_FIXTURE_INTEGRITY_ONLY: " + verify_freeze(args.verify_freeze)["status"])
+    elif args.verify_a is not None:
+        from freeze_v2 import verify_a
+
+        print("A_PLAN_MATCH_NOT_RATIFIED: "
+              + verify_a(args.verify_a, args.expected_plan_sha256)["status"])
     else:
-        print(freeze_a(args.freeze_a))
+        print(freeze_a(args.freeze_a, args.expected_plan_sha256))
 
 
 if __name__ == "__main__":
