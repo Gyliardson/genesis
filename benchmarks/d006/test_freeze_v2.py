@@ -145,9 +145,11 @@ class LiteralOracleTests(unittest.TestCase):
                 make_jobs_v2(UNIFORM, seed)
             with self.assertRaises(ValueError):
                 substream(UNIFORM, seed, "arrival", 0)
-        with patch.dict(S1_SEED_BY_N, {1000: 710111}):
-            with self.assertRaisesRegex(ValueError, "collision"):
-                validate_seed_partitions()
+        with (
+            patch.dict(S1_SEED_BY_N, {1000: 710111}),
+            self.assertRaisesRegex(ValueError, "collision"),
+        ):
+            validate_seed_partitions()
 
 
 class SyntheticFreezeTests(unittest.TestCase):
@@ -196,9 +198,11 @@ class SyntheticFreezeTests(unittest.TestCase):
             destination.mkdir()
             original(stage, destination)
 
-        with patch.object(freeze_v2, "_atomic_publish_dir", side_effect=racing_publish):
-            with self.assertRaises(FileExistsError):
-                self.run_mini()
+        with (
+            patch.object(freeze_v2, "_atomic_publish_dir", side_effect=racing_publish),
+            self.assertRaises(FileExistsError),
+        ):
+            self.run_mini()
         self.assertTrue(self.destination.is_dir())
         self.assertEqual(list(self.destination.iterdir()), [])
         self.assertFalse(list(self.parent.glob(".*.staging-*")))
@@ -207,13 +211,15 @@ class SyntheticFreezeTests(unittest.TestCase):
         original = freeze_v2._write_bytes
         for target in ("T10_23.json", "manifest.json", "manifest.sha256"):
             with self.subTest(target=target):
-                def failing_write(path, data):
+                def failing_write(path, data, target=target):
                     if path.name == target:
                         raise OSError("simulated IO fault")
                     return original(path, data)
-                with patch.object(freeze_v2, "_write_bytes", side_effect=failing_write):
-                    with self.assertRaisesRegex(OSError, "simulated IO fault"):
-                        self.run_mini()
+                with (
+                    patch.object(freeze_v2, "_write_bytes", side_effect=failing_write),
+                    self.assertRaisesRegex(OSError, "simulated IO fault"),
+                ):
+                    self.run_mini()
                 self.assertFalse(self.destination.exists())
                 self.assertFalse(list(self.parent.glob(".*.staging-*")))
 
@@ -236,19 +242,25 @@ class SyntheticFreezeTests(unittest.TestCase):
             original(path, data)
             if path.name == "T09_17.json":
                 path.write_bytes(data + b"corrupt")
-        with patch.object(freeze_v2, "_write_bytes", side_effect=corrupt_after_write):
-            with self.assertRaisesRegex(RuntimeError, "payload checksum mismatch"):
-                self.run_mini()
+        with (
+            patch.object(freeze_v2, "_write_bytes", side_effect=corrupt_after_write),
+            self.assertRaisesRegex(RuntimeError, "payload checksum mismatch"),
+        ):
+            self.run_mini()
         self.assertFalse(self.destination.exists())
         self.assertFalse(list(self.parent.glob(".*.staging-*")))
 
     def test_runtime_version_implementation_and_manifest_provenance_negative(self):
-        with patch.object(freeze_v2.sys, "implementation", SimpleNamespace(name="pypy")):
-            with self.assertRaisesRegex(RuntimeError, "CPython"):
-                freeze_v2.freeze_a(self.destination)
-        with patch.object(freeze_v2, "PYTHON_FREEZE_VERSION", (3, 11, 17)):
-            with self.assertRaisesRegex(RuntimeError, "3.11.18"):
-                freeze_v2.freeze_a(self.destination)
+        with (
+            patch.object(freeze_v2.sys, "implementation", SimpleNamespace(name="pypy")),
+            self.assertRaisesRegex(RuntimeError, "CPython"),
+        ):
+            freeze_v2.freeze_a(self.destination)
+        with (
+            patch.object(freeze_v2, "PYTHON_FREEZE_VERSION", (3, 11, 17)),
+            self.assertRaisesRegex(RuntimeError, "3.11.18"),
+        ):
+            freeze_v2.freeze_a(self.destination)
         self.assertFalse(self.destination.exists())
         self.run_mini()
         target = self.destination / "manifest.json"
