@@ -96,7 +96,7 @@ class LiteralOracleTests(unittest.TestCase):
         )
         wrong_gap = -math.log(substream(UNIFORM, 17, "arrival", 0).random()) / 0.6
         self.assertNotAlmostEqual(wrong_gap, 0.14819090444081315)
-        self.assertNotEqual(math.floor(2.3181068271585583), round(2.3181068271585583))
+        self.assertNotEqual(math.floor(2.6552158465336935), round(2.6552158465336935))
         # An independent literal byte descriptor must match exactly; this is
         # not a roundtrip oracle constructed using the implementation's canonical().
         manual = {
